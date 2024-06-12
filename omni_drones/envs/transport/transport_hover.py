@@ -37,7 +37,7 @@ from omni_drones.utils.torch import cpos, off_diag, others, quat_axis
 from omni_drones.robots.drone import MultirotorBase
 
 from .utils import TransportationGroup, TransportationCfg
-
+from einops import rearrange
 
 class TransportHover(IsaacEnv):
     r"""
@@ -86,18 +86,30 @@ class TransportHover(IsaacEnv):
         self.reward_distance_scale = cfg.task.reward_distance_scale
         self.time_encoding = cfg.task.time_encoding
         self.safe_distance = cfg.task.safe_distance
+        self.num_payloads = 3
 
         super().__init__(cfg, headless)
 
         self.group.initialize()
+
         self.payload = self.group.payload_view
         
         self.payload_target_visual = RigidPrimView(
             "/World/envs/.*/payloadTargetVis",
             reset_xform_properties=False
         )
+        self.payload_target_visual2 = RigidPrimView(
+            "/World/envs/.*/payloadTargetVis2",
+            reset_xform_properties=False
+        )
+        self.payload_target_visual3 = RigidPrimView(
+            "/World/envs/.*/payloadTargetVis3",
+            reset_xform_properties=False
+        )
         self.payload_target_visual.initialize()
-        
+        self.payload_target_visual2.initialize()
+        self.payload_target_visual3.initialize()
+
         self.init_poses = self.group.get_world_poses(clone=True)
         self.init_velocities = torch.zeros_like(self.group.get_velocities())
         self.init_joint_pos = self.group.get_joint_positions(clone=True)
@@ -107,8 +119,8 @@ class TransportHover(IsaacEnv):
         self.init_drone_vels = torch.zeros_like(self.drone.get_velocities())
 
         self.payload_target_rpy_dist = D.Uniform(
-            torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
-            torch.tensor([0., 0., 2.], device=self.device) * torch.pi
+            torch.tensor([0., 0., 0.], device=self.device).repeat(self.group.n, 1) * torch.pi,
+            torch.tensor([0., 0., 2.], device=self.device).repeat(self.group.n, 1) * torch.pi
         )
         payload_mass_scale = self.cfg.task.payload_mass_scale
         self.payload_mass_dist = D.Uniform(
@@ -116,16 +128,16 @@ class TransportHover(IsaacEnv):
             torch.as_tensor(payload_mass_scale[1] * self.drone.MASS_0.sum(), device=self.device)
         )
         self.init_pos_dist = D.Uniform(
-            torch.tensor([-3, -3, 1.], device=self.device),
-            torch.tensor([3., 3., 2.5], device=self.device)
+            torch.tensor([-3, -3, 1.], device=self.device).repeat(self.group.n, 1),
+            torch.tensor([3., 3., 2.5], device=self.device).repeat(self.group.n, 1)
         )
         self.init_rpy_dist = D.Uniform(
-            torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
-            torch.tensor([0., 0., 2.], device=self.device) * torch.pi
+            torch.tensor([0., 0., 0.], device=self.device).repeat(self.group.n, 1) * torch.pi,
+            torch.tensor([0., 0., 2.], device=self.device).repeat(self.group.n, 1) * torch.pi
         )
-        self.payload_target_pos = torch.tensor([0., 0., 2.], device=self.device)
-        self.payload_target_heading = torch.zeros(self.num_envs, 3, device=self.device)
-        self.last_distance = torch.zeros(self.num_envs, 1, device=self.device)
+        self.payload_target_pos = torch.tensor([[0., 0., 0.], [-2.5, 0., 0.], [2.5, 0., 0.]], device=self.device)
+        self.payload_target_heading = torch.zeros(self.num_envs, self.group.n, 3, device=self.device)
+        self.last_distance = torch.zeros(self.num_envs, self.group.n, device=self.device)
 
         self.alpha = 0.8
 
@@ -140,7 +152,21 @@ class TransportHover(IsaacEnv):
 
         DynamicCuboid(
             "/World/envs/env_0/payloadTargetVis",
-            translation=torch.tensor([0., 0., 2.]),
+            translation=torch.tensor([0, 0., 0.]),
+            scale=torch.tensor([0.75, 0.5, 0.2]),
+            color=torch.tensor([0.8, 0.1, 0.1]),
+            size=2.01,
+        )
+        DynamicCuboid(
+            "/World/envs/env_0/payloadTargetVis2",
+            translation=torch.tensor([-2.5, 0., 0.]),
+            scale=torch.tensor([0.75, 0.5, 0.2]),
+            color=torch.tensor([0.8, 0.1, 0.1]),
+            size=2.01,
+        )
+        DynamicCuboid(
+            "/World/envs/env_0/payloadTargetVis3",
+            translation=torch.tensor([2.5, 0., 0.]),
             scale=torch.tensor([0.75, 0.5, 0.2]),
             color=torch.tensor([0.8, 0.1, 0.1]),
             size=2.01,
@@ -153,8 +179,25 @@ class TransportHover(IsaacEnv):
             "/World/envs/env_0/payloadTargetVis",
             disable_gravity=True
         )
+        kit_utils.set_collision_properties(
+            "/World/envs/env_0/payloadTargetVis2",
+            collision_enabled=False
+        )
+        kit_utils.set_rigid_body_properties(
+            "/World/envs/env_0/payloadTargetVis2",
+            disable_gravity=True
+        )
+        kit_utils.set_collision_properties(
+            "/World/envs/env_0/payloadTargetVis3",
+            collision_enabled=False
+        )
+        kit_utils.set_rigid_body_properties(
+            "/World/envs/env_0/payloadTargetVis3",
+            disable_gravity=True
+        )
 
-        self.group.spawn(translations=[(0, 0, 2.0)], enable_collision=False)
+        # self.group.spawn(translations=[(0, 0, 2.0)], enable_collision=False)
+        self.group.spawn(translations=[(0, 0, 2.0), (-2.5, 0, 2.0), (2.5, 0, 2.0)], enable_collision=False)
         return ["/World/defaultGroundPlane"]
 
     def _set_specs(self):
@@ -224,14 +267,14 @@ class TransportHover(IsaacEnv):
         heading = quat_axis(rot, 0)
 
         self.group._reset_idx(env_ids)
-        self.group.set_world_poses(pos + self.envs_positions[env_ids], rot, env_ids)
+        self.group.set_world_poses(pos + self.envs_positions[env_ids].unsqueeze(dim=1).repeat(1,self.group.n,1), rot, env_ids)
         self.group.set_velocities(self.init_velocities[env_ids], env_ids)
 
         self.group.set_joint_positions(self.init_joint_pos[env_ids], env_ids)
         self.group.set_joint_velocities(self.init_joint_vel[env_ids], env_ids)
 
         payload_target_rpy = self.payload_target_rpy_dist.sample(env_ids.shape)
-        payload_target_rot = euler_to_quaternion(payload_target_rpy)
+        payload_target_rot = euler_to_quaternion(payload_target_rpy) # [env_ids, group, 4]
         payload_target_heading = quat_axis(payload_target_rot, 0)
         payload_masses = self.payload_mass_dist.sample(env_ids.shape)
 
@@ -239,16 +282,26 @@ class TransportHover(IsaacEnv):
 
         self.payload.set_masses(payload_masses, env_ids)
         self.payload_target_visual.set_world_poses(
-            orientations=payload_target_rot,
+            orientations=payload_target_rot[:,0,:],
             env_indices=env_ids
         )
+        self.payload_target_visual2.set_world_poses(
+            orientations=payload_target_rot[:,1,:],
+            env_indices=env_ids
+        )
+        self.payload_target_visual3.set_world_poses(
+            orientations=payload_target_rot[:,2,:],
+            env_indices=env_ids
+        )
+
+
 
         self.info["payload_mass"][env_ids] = payload_masses.unsqueeze(-1).clone()
         self.stats[env_ids] = 0.
         distance = torch.cat([
             self.payload_target_pos-pos,
             payload_target_heading-heading,
-        ], dim=-1).norm(dim=-1, keepdim=True)
+        ], dim=-1).norm(dim=-1)
         self.last_distance[env_ids] = distance
 
     def _pre_sim_step(self, tensordict: TensorDictBase):
@@ -256,19 +309,20 @@ class TransportHover(IsaacEnv):
         self.effort = self.drone.apply_action(actions)
 
     def _compute_state_and_obs(self):
-        self.drone_states = self.drone.get_state()
+        self.drone_states = self.drone.get_state().reshape(self.num_envs, self.num_payloads, self.group.num_drones, -1)
         self.group.get_state()
-        payload_vels = self.payload.get_velocities()
+        payload_vels = self.payload.get_velocities().reshape(self.num_envs, self.num_payloads, -1)
         drone_pos = self.drone_states[..., :3]
 
-        self.payload_pos, self.payload_rot = self.get_env_poses(self.payload.get_world_poses())
+
+        self.payload_pos, self.payload_rot = self.get_env_poses(self.payload.get_world_poses(indices=torch.arange(self.num_envs * self.num_payloads).reshape(self.num_envs, self.num_payloads))) # [env_ids, 3], [env_ids, 4]
         self.payload_heading: torch.Tensor = quat_axis(self.payload_rot, axis=0)
         self.payload_up: torch.Tensor = quat_axis(self.payload_rot, axis=2)
         
         self.drone_rpos = torch.vmap(cpos)(drone_pos, drone_pos)
         self.drone_rpos = torch.vmap(off_diag)(self.drone_rpos)
         self.drone_pdist = torch.norm(self.drone_rpos, dim=-1, keepdim=True)
-        payload_drone_rpos = self.payload_pos.unsqueeze(1) - drone_pos
+        payload_drone_rpos = self.payload_pos.unsqueeze(2) - drone_pos
 
         self.target_payload_rpose = torch.cat([
             self.payload_target_pos - self.payload_pos,
@@ -284,18 +338,18 @@ class TransportHover(IsaacEnv):
         ]
         if self.time_encoding:
             t = (self.progress_buf / self.max_episode_length).unsqueeze(-1)
-            payload_state.append(t.expand(-1, self.time_encoding_dim))
+            payload_state.append(t.expand(-1, self.time_encoding_dim).unsqueeze(1).repeat(1, self.num_payloads, 1)) # [env_num, payload_num, time_dim]
         payload_state = torch.cat(payload_state, dim=-1).unsqueeze(1)
 
         obs = TensorDict({}, [self.num_envs, self.drone.n])
         identity = torch.eye(self.drone.n, device=self.device).expand(self.num_envs, -1, -1)
         obs["obs_self"] = torch.cat(
-            [-payload_drone_rpos, self.drone_states[..., 3:], identity], dim=-1
+            [-payload_drone_rpos.reshape(self.num_envs, self.drone.n, -1), self.drone_states[..., 3:].reshape(self.num_envs, self.drone.n, -1), identity], dim=-1
         ).unsqueeze(2) # [..., 1, state_dim]
         obs["obs_others"] = torch.cat(
             [self.drone_rpos, self.drone_pdist, torch.vmap(others)(self.drone_states[..., 3:13])], dim=-1
-        ) # [..., n-1, state_dim + 1]
-        obs["obs_payload"] = payload_state.expand(-1, self.drone.n, -1).unsqueeze(2) # [..., 1, 22]
+        ).permute(0,1,3,2,4).reshape(self.num_envs, self.drone.n, -1).unsqueeze(-1) # [..., n-1, state_dim + 1]
+        obs["obs_payload"] = payload_state.expand(-1, self.drone.n, -1, -1) # [..., 1, 22]
 
         state = TensorDict({}, self.num_envs)
         state["payload"] = payload_state # [..., 1, 22]
