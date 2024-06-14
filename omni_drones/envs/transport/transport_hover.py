@@ -288,19 +288,6 @@ class TransportHover(IsaacEnv):
         self.payload_target_heading[env_ids] = payload_target_heading
 
         self.payload.set_masses(payload_masses, env_ids)
-        self.payload_target_visual.set_world_poses(
-            orientations=payload_target_rot[:,0,:],
-            env_indices=env_ids
-        )
-        self.payload_target_visual2.set_world_poses(
-            orientations=payload_target_rot[:,1,:],
-            env_indices=env_ids
-        )
-        self.payload_target_visual3.set_world_poses(
-            orientations=payload_target_rot[:,2,:],
-            env_indices=env_ids
-        )
-
 
 
         self.info["payload_mass"][env_ids] = payload_masses.unsqueeze(-1).clone()
