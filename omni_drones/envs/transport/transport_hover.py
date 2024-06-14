@@ -136,10 +136,10 @@ class TransportHover(IsaacEnv):
         )
 
         self.init_rpy_dist = D.Uniform(
-            torch.tensor([0., 0., 0.], device=self.device).repeat(self.group.n, 1) * torch.pi,
-            torch.tensor([0., 0., 0.], device=self.device).repeat(self.group.n, 1) * torch.pi
+            torch.tensor([0., 0., 1.], device=self.device).repeat(self.group.n, 1) * torch.pi,
+            torch.tensor([0., 0., 1.], device=self.device).repeat(self.group.n, 1) * torch.pi
         )
-        self.payload_target_pos = torch.tensor([[0., -3, 0.], [0., 0., 0.], [0., 3., 0.]], device=self.device)
+        self.payload_target_pos = torch.tensor([[0., -3, 0.3], [0., 0., 0.3], [0., 3., 0.3]], device=self.device)
         self.payload_target_heading = torch.zeros(self.num_envs, self.group.n, 3, device=self.device)
         self.last_distance = torch.zeros(self.num_envs, self.group.n, device=self.device)
 
@@ -181,7 +181,7 @@ class TransportHover(IsaacEnv):
         )
         kit_utils.set_collision_properties(
             "/World/envs/env_0/payloadTargetVis",
-            collision_enabled=False
+            collision_enabled=True
         )
         kit_utils.set_rigid_body_properties(
             "/World/envs/env_0/payloadTargetVis",
@@ -189,7 +189,7 @@ class TransportHover(IsaacEnv):
         )
         kit_utils.set_collision_properties(
             "/World/envs/env_0/payloadTargetVis2",
-            collision_enabled=False
+            collision_enabled=True
         )
         kit_utils.set_rigid_body_properties(
             "/World/envs/env_0/payloadTargetVis2",
@@ -197,7 +197,7 @@ class TransportHover(IsaacEnv):
         )
         kit_utils.set_collision_properties(
             "/World/envs/env_0/payloadTargetVis3",
-            collision_enabled=False
+            collision_enabled=True
         )
         kit_utils.set_rigid_body_properties(
             "/World/envs/env_0/payloadTargetVis3",
