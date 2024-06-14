@@ -7,6 +7,7 @@ import torch
 import numpy as np
 import wandb
 from omegaconf import OmegaConf
+import imageio
 
 from omni_drones import CONFIG_PATH, init_simulation_app
 from omni_drones.utils.torchrl import SyncDataCollector, AgentSpec
@@ -36,7 +37,6 @@ from torchrl.envs.transforms import (
 )
 
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 
 class Every:
     def __init__(self, func, steps):
@@ -221,12 +221,7 @@ def main(cfg):
         }
 
         if len(frames):
-            video_array = np.stack(frames).transpose(0, 3, 1, 2)
-            info["recording"] = wandb.Video(
-                video_array, 
-                fps=0.5 / cfg.sim.dt, 
-                format="mp4"
-            )
+            imageio.mimsave("video.mp4", frames, fps=0.5 / cfg.sim.dt)
 
         frames.clear()
         return info
