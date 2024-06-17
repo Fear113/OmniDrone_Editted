@@ -139,7 +139,7 @@ class TransportHover(IsaacEnv):
             torch.tensor([0., 0., 1.], device=self.device).repeat(self.group.n, 1) * torch.pi,
             torch.tensor([0., 0., 1.], device=self.device).repeat(self.group.n, 1) * torch.pi
         )
-        self.payload_target_pos = torch.tensor([[0., -3, 0.3], [0., 0., 0.3], [0., 3., 0.3]], device=self.device)
+        self.payload_target_pos = torch.tensor([[0., 3., 0.3], [0., 0., 0.3], [0., -3., 0.3]], device=self.device)
         self.payload_target_heading = torch.zeros(self.num_envs, self.group.n, 3, device=self.device)
         self.last_distance = torch.zeros(self.num_envs, self.group.n, device=self.device)
 
@@ -160,7 +160,7 @@ class TransportHover(IsaacEnv):
 
         DynamicCuboid(
             "/World/envs/env_0/payloadTargetVis",
-            translation=torch.tensor([0, -3., 0.]),
+            translation=torch.tensor([0, 3., 0.]),
             scale=torch.tensor([0.75, 0.5, 0.2]),
             color=torch.tensor([0.8, 0.1, 0.1]),
             size=2.01,
@@ -174,7 +174,7 @@ class TransportHover(IsaacEnv):
         )
         DynamicCuboid(
             "/World/envs/env_0/payloadTargetVis3",
-            translation=torch.tensor([0, 3., 0.]),
+            translation=torch.tensor([0, -3., 0.]),
             scale=torch.tensor([0.75, 0.5, 0.2]),
             color=torch.tensor([0.8, 0.1, 0.1]),
             size=2.01,
@@ -408,7 +408,7 @@ class TransportHover(IsaacEnv):
         ).unsqueeze(-1)
 
         done_outofrange = ((self.drone_states[..., 2] < 0.2)
-                     | (self.drone_states[..., 2] > 10)
+                     | (self.drone_states[..., 2] > 20)
                      | (self.drone_states[..., 1] < -5)
                      | (self.drone_states[..., 1] > 5)
                      | (self.drone_states[..., 0] < -5)
@@ -416,7 +416,6 @@ class TransportHover(IsaacEnv):
 
         done = (
             (self.progress_buf >= self.max_episode_length).unsqueeze(-1)
-            # | done_fall.any(-1, keepdim=True)
             | self.hasnan.unsqueeze(-1)
             | done_outofrange.any(-1, keepdim=True)
         )
