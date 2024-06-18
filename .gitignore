@@ -1,3 +1,5 @@
+*.env
+.idea
 .devcontainer
 
 # Byte-compiled / optimized / DLL files
