@@ -138,6 +138,8 @@ class Formation(IsaacEnv):
         self.formation = self.formation + self.target_pos
         # self.formation_L = laplacian(self.formation)
 
+        self.formation[...,0] -= 4
+
         self.drone.spawn(translations=self.formation)
         return ["/World/defaultGroundPlane"]
 
