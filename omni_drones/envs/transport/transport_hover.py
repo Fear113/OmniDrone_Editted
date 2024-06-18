@@ -131,15 +131,15 @@ class TransportHover(IsaacEnv):
         #     torch.tensor([3., 3., 2.5], device=self.device).repeat(self.group.n, 1)
         # )
         self.init_pos_dist = D.Uniform(
-            torch.tensor([[-2., -2., 2.],[-2., 0., 2.], [-2., 2., 2.]], device=self.device),
-            torch.tensor([[-2., -2., 2.],[-2., 0., 2.], [-2., 2., 2.]], device=self.device),
+            torch.tensor([[0., -2., 3.],[0, 0., 3.], [0., 2., 3.]], device=self.device),
+            torch.tensor([[0., -2., 3.],[0., 0., 3.], [0., 2., 3.]], device=self.device),
         )
 
         self.init_rpy_dist = D.Uniform(
             torch.tensor([0., 0., 1.], device=self.device).repeat(self.group.n, 1) * torch.pi,
             torch.tensor([0., 0., 1.], device=self.device).repeat(self.group.n, 1) * torch.pi
         )
-        self.payload_target_pos = torch.tensor([[0., -3, 0.3], [0., 0., 0.3], [0., 3., 0.3]], device=self.device)
+        self.payload_target_pos = torch.tensor([[-5., 2, 1], [-5., 0., 1], [-5., -2., 1]], device=self.device)
         self.payload_target_heading = torch.zeros(self.num_envs, self.group.n, 3, device=self.device)
         self.last_distance = torch.zeros(self.num_envs, self.group.n, device=self.device)
 
@@ -160,28 +160,28 @@ class TransportHover(IsaacEnv):
 
         DynamicCuboid(
             "/World/envs/env_0/payloadTargetVis",
-            translation=torch.tensor([0, -3., 0.]),
+            translation=torch.tensor([-5, 2., 0.]),
             scale=torch.tensor([0.75, 0.5, 0.2]),
-            color=torch.tensor([0.8, 0.1, 0.1]),
+            color=torch.tensor([1, 0.6, 0.]), # orange
             size=2.01,
         )
         DynamicCuboid(
             "/World/envs/env_0/payloadTargetVis2",
-            translation=torch.tensor([0, 0., 0.]),
+            translation=torch.tensor([-5, 0., 0.]),
             scale=torch.tensor([0.75, 0.5, 0.2]),
-            color=torch.tensor([0.8, 0.1, 0.1]),
+            color=torch.tensor([0.6, 0.8, 0.]), # green
             size=2.01,
         )
         DynamicCuboid(
             "/World/envs/env_0/payloadTargetVis3",
-            translation=torch.tensor([0, 3., 0.]),
+            translation=torch.tensor([-5, -2., 0.]),
             scale=torch.tensor([0.75, 0.5, 0.2]),
-            color=torch.tensor([0.8, 0.1, 0.1]),
+            color=torch.tensor([0.8, 0, 0.6]), # pink
             size=2.01,
         )
         kit_utils.set_collision_properties(
             "/World/envs/env_0/payloadTargetVis",
-            collision_enabled=True
+            collision_enabled=False
         )
         kit_utils.set_rigid_body_properties(
             "/World/envs/env_0/payloadTargetVis",
@@ -189,7 +189,7 @@ class TransportHover(IsaacEnv):
         )
         kit_utils.set_collision_properties(
             "/World/envs/env_0/payloadTargetVis2",
-            collision_enabled=True
+            collision_enabled=False
         )
         kit_utils.set_rigid_body_properties(
             "/World/envs/env_0/payloadTargetVis2",
@@ -197,14 +197,14 @@ class TransportHover(IsaacEnv):
         )
         kit_utils.set_collision_properties(
             "/World/envs/env_0/payloadTargetVis3",
-            collision_enabled=True
+            collision_enabled=False
         )
         kit_utils.set_rigid_body_properties(
             "/World/envs/env_0/payloadTargetVis3",
             disable_gravity=True
         )
 
-        self.group.spawn(translations=[(0., -3., 0), (0, 0., 0.), (0., 3., 0.)], enable_collision=True)
+        self.group.spawn(translations=[(0., -2., 3), (0, 0., 3.), (0., 2., 3.)], enable_collision=True)
         return ["/World/defaultGroundPlane"]
 
     def _set_specs(self):
