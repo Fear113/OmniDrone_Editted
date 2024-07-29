@@ -30,6 +30,7 @@ from .payload import PayloadTrack, PayloadFlyThrough
 from .dragon import DragonHover
 from .rearrange import Rearrange
 from .isaac_env import IsaacEnv
+from .logistics import Logistics
 
 try:
     from .pinball import Pinball
