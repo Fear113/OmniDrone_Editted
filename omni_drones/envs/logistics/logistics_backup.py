@@ -38,10 +38,6 @@ from omni.isaac.core.objects import DynamicCuboid
 from omni_drones.envs.isaac_env import AgentSpec, IsaacEnv, List, Optional
 from omni_drones.envs.transport.utils import TransportationCfg, TransportationGroup
 from omni_drones.utils.torch import cpos, off_diag, others, make_cells, euler_to_quaternion
-from omni_drones.utils.torch import (
-    normalize, quat_rotate, quat_rotate_inverse, quat_axis, symlog
-)
-
 from omni_drones.robots.drone import MultirotorBase
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torchrl.data import CompositeSpec, UnboundedContinuousTensorSpec, DiscreteTensorSpec
@@ -74,24 +70,25 @@ class Logistics(IsaacEnv):
             .flatten(0, -2)
             .to(self.device)
         )
-
+        # self.init_rpy_dist = D.Uniform(
+        #     torch.tensor([-.2, -.2, 0.], device=self.device) * torch.pi,
+        #     torch.tensor([0.2, 0.2, 2.], device=self.device) * torch.pi
+        # )
         self.init_rpy_dist = D.Uniform(
             torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
             torch.tensor([0., 0., 0.], device=self.device) * torch.pi
         )
-        if initial_state is not None:
-            pass
-        else:
-            for i, group in enumerate(self.initial_state.groups):
-                if group.is_transporting:
-                    self.target_pos = torch.tensor([0.0, 0.0, 1.5], device=self.device)
-                    self.target_pos = self.target_pos.expand(self.num_envs, 1, 3)
-                else:
-                    self.target_pos = torch.tensor([
-                    [0.0,0.0,1.5]
-                ], device=self.device)
-            self.target_heading = torch.zeros(self.num_envs, 3, device=self.device)
-            self.target_heading[..., 0] = -1
+        
+        for i, group in enumerate(self.initial_state.groups):
+            if group.is_transporting:
+                self.target_pos = torch.tensor([0.0, 0.0, 1.5], device=self.device)
+                self.target_pos = self.target_pos.expand(self.num_envs, 1, 3)
+            else:
+                self.target_pos = torch.tensor([
+                [0.0,0.0,1.5]
+            ], device=self.device)
+        self.target_heading = torch.zeros(self.num_envs, 3, device=self.device)
+        self.target_heading[..., 0] = -1
 
         self.alpha = 0.8
         self.world = World()
@@ -165,11 +162,98 @@ class Logistics(IsaacEnv):
                 if isinstance(payload, DisconnectedPayload):
                     self.create_payload(group_offset[i], f"{group_prim_path}/payload_{j}")
 
-
+        #
+        #
+        # # spawn group xform
+        # self.xform_prims = []
+        # for i in range(self.num_groups):
+        #     xform = prim_utils.create_prim(f"/World/envs/env_0/Group_{i}")
+        #     self.xform_prims.append(xform)
+        #
+        # # set group position offset
+        # if self.num_groups == 1:
+        #     group_offset = torch.tensor([[0.0, 0.0, 0.0]], device=self.device)
+        # else:
+        #     raise ValueError(f"num_groups: {self.num_groups} not supported")
+        #
+        # # spawn drones
+        # if self.num_drones_per_group == 6:
+        #     formation = torch.tensor([
+        #         [1.7321, -1, 1.5],
+        #         [0, -2, 1.5],
+        #         [-1.7321, -1, 1.5],
+        #         [-1.7321, 1.0, 1.5],
+        #         [0.0, 2.0, 1.5],
+        #         [1.7321, 1.0, 1.5],
+        #     ], device=self.device)
+        # else:
+        #     raise ValueError(f"num_drones_per_group: {self.num_drones_per_group} not supported")
+        #
+        # drone_prim_paths = []
+        # for i in range(self.num_groups):
+        #     for j in range(self.num_drones_per_group):
+        #         drone_prim_paths.append(f"/World/envs/env_0/Group_{i}/{self.drone.name.lower()}_{j}")
+        #
+        # drone_offset = group_offset.repeat_interleave(self.num_drones_per_group, dim=0)
+        # self.drone_prims = np.array(self.drone.spawn(translations=formation + drone_offset, prim_paths=drone_prim_paths))
+        # self.drone_prims = self.drone_prims.reshape(self.num_groups, self.num_drones_per_group)
+        #
+        # # spawn payloads
+        # if self.num_payloads_per_group == 1:
+        #     payload_pos = torch.tensor([[0., -2., 0.2]], device=self.device)
+        # else:
+        #     raise ValueError(f"num_payloads_per_group: {self.num_payloads_per_group} not supported")
+        # payload_offset = group_offset.repeat_interleave(self.num_payloads_per_group, dim=0)
+        # payload_pos = payload_pos.repeat(self.num_groups, 1) + payload_offset
+        # payload_prim_paths = []
+        # for i in range(self.num_groups):
+        #     for j in range(self.num_payloads_per_group):
+        #         payload_prim_paths.append(f"/World/envs/env_0/Group_{i}/payload_{j}")
+        #
+        # self.payload_prims = np.array(self.create_payload(payload_pos, payload_prim_paths))
+        # self.payload_prims = self.payload_prims.reshape(self.num_groups, self.num_payloads_per_group)
+        #
+        # # link drone and payload if needed
+        # for i, group in enumerate(self.last_state.groups):
+        #     for j, payload in enumerate(group.payloads):
+        #         if isinstance(payload, ConnectedPayload):
+        #             for drone_prim in self.drone_prims[i]:
+        #                 execute(
+        #                     "UnapplyAPISchema",
+        #                     api=UsdPhysics.ArticulationRootAPI,
+        #                     prim=drone_prim,
+        #                 )
+        #                 execute(
+        #                     "UnapplyAPISchema",
+        #                     api=PhysxSchema.PhysxArticulationAPI,
+        #                     prim=drone_prim,
+        #                 )
+        #                 scene_utils.create_bar(
+        #                     prim_path=f"{drone_prim.GetPath()}/bar",
+        #                     length=1,
+        #                     translation=(0, 0, -0.5),
+        #                     from_prim=self.payload_prims[i][j],
+        #                     to_prim=f"{drone_prim.GetPath()}/base_link",
+        #                     mass=0.03,
+        #                     enable_collision=True
+        #                 )
+        #             UsdPhysics.ArticulationRootAPI.Apply(self.xform_prims[i])
+        #             PhysxSchema.PhysxArticulationAPI.Apply(self.xform_prims[i])
+        #             kit_utils.set_articulation_properties(
+        #                 self.xform_prims[i].GetPath(),
+        #                 enable_self_collisions=False,
+        #                 solver_position_iteration_count=cfg.articulation_props.solver_position_iteration_count,
+        #                 solver_velocity_iteration_count=cfg.articulation_props.solver_velocity_iteration_count,
+        #             )
+        #
+        # return ["/World/defaultGroundPlane"]
 
     def _reset_idx(self, env_ids: torch.Tensor):
         self.drone._reset_idx(env_ids)
 
+        # pos = torch.vmap(sample_from_grid, randomness="different")(
+        #     self.cells.expand(len(env_ids), *self.cells.shape), n=self.drone.n
+        # ) + self.envs_positions[env_ids].unsqueeze(1)
         if self.initial_state.groups[0].drone_pos is None:
             pos = torch.tensor([[[1.0, 1.0, 2.5],
                 [1.0, -1.0, 2.5],
@@ -202,10 +286,10 @@ class Logistics(IsaacEnv):
             obs_self_dim += self.time_encoding_dim
 
         observation_spec = CompositeSpec({
-            "obs_self": UnboundedContinuousTensorSpec((1, obs_self_dim)),
-            "obs_others": UnboundedContinuousTensorSpec((self.drone.n - 1, 13 + 1)),
-            # "pos": UnboundedContinuousTensorSpec((self.drone.n, 3)), 
-            # "rotation": UnboundedContinuousTensorSpec((self.drone.n, 4))
+            # "obs_self": UnboundedContinuousTensorSpec((1, obs_self_dim)),
+            # "obs_others": UnboundedContinuousTensorSpec((self.drone.n - 1, 13 + 1)),
+            "pos": UnboundedContinuousTensorSpec((self.drone.n, 3)), 
+            "rotation": UnboundedContinuousTensorSpec((self.drone.n, 4))
         }).to(self.device)
         observation_central_spec = CompositeSpec({
             "drones": UnboundedContinuousTensorSpec((self.drone.n, drone_state_dim)),
@@ -254,11 +338,10 @@ class Logistics(IsaacEnv):
 
                 return TensorDict({
                     "agents": {
-                        "observation": obs,
-                        "observation_central": state,
+                        "observation": obs, 
+                        "state": state,
                     }
-                    # "stats": self.stats
-                }, self.batch_size)
+                }, self.num_envs)
             else:
                 self.root_states = self.drone.get_state()
                 pos = self.drone.pos
@@ -297,7 +380,18 @@ class Logistics(IsaacEnv):
                 }, self.batch_size)
 
     def _compute_reward_and_done(self):
-
+        # # placeholder reward and never True done
+        # return TensorDict(
+        #     {
+        #         "agents": {
+        #             "reward": torch.tensor([[0]]).unsqueeze(1).expand(-1, self.drone.n, 1)
+        #         },
+        #         "done": torch.tensor([[False]]),
+        #         "terminated": torch.tensor([[False]]),
+        #         "truncated": torch.tensor([[False]]),
+        #     },
+        #     self.batch_size,
+        # )
         for i, group in enumerate(self.initial_state.groups):
             if group.is_transporting:
                 pass #Todo
