@@ -28,6 +28,6 @@ wandb:
   tags: 
 
 defaults:
-  - task: Hover
+  - task: Logistics
   - algo: mappo
   - _self_
