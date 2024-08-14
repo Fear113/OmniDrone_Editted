@@ -30,7 +30,7 @@ import torch
 import torch.distributions as D
 import numpy as np
 
-from omni_drones.envs.logistics.utils import InitialState, ConnectedPayload, DisconnectedPayload
+from omni_drones.envs.logistics.utils import StateSnapshot, ConnectedPayload, DisconnectedPayload
 from omni_drones.views import RigidPrimView
 
 from omni.isaac.core import World
@@ -51,7 +51,7 @@ def sample_from_grid(cells: torch.Tensor, n):
 
 
 class Logistics(IsaacEnv):
-    def __init__(self, cfg, headless, initial_state: Optional[InitialState] = None):
+    def __init__(self, cfg, headless, initial_state: Optional[StateSnapshot] = None):
         self.time_encoding = cfg.task.time_encoding
         self.safe_distance = cfg.task.safe_distance
         self.initial_state = initial_state
