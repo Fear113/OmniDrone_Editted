@@ -72,6 +72,7 @@ class TransportationGroup(RobotBase):
         translations=..., 
         prim_paths: Sequence[str] = None,
         enable_collision: bool = False,
+        drone_translations_origin = None,
     ):
 
         translations = torch.atleast_2d(
@@ -113,23 +114,25 @@ class TransportationGroup(RobotBase):
                 angular_damping=0.1,
                 linear_damping=0.1
             )
-
-            if self.num_drones == 4:
-                drone_translations = torch.tensor([
-                    [0.75, 0.5, 0],
-                    [0.75, -0.5, 0],
-                    [-0.75, -0.5, 0],
-                    [-0.75, 0.5, 0],
-                ])
-            elif self.num_drones == 6:
-                drone_translations = torch.tensor([
-                    [1.0, 0.5, 0],
-                    [1.0, -0.5, 0],
-                    [0.0, 0.5, 0],
-                    [0.0, -0.5, 0],
-                    [-1.0, -0.5, 0],
-                    [-1.0, 0.5, 0],
-                ])
+            if not(drone_translations_origin is None):
+                drone_translations = drone_translations_origin[0]
+            else:
+                if self.num_drones == 4:
+                    drone_translations = torch.tensor([
+                        [0.75, 0.5, 0],
+                        [0.75, -0.5, 0],
+                        [-0.75, -0.5, 0],
+                        [-0.75, 0.5, 0],
+                    ])
+                elif self.num_drones == 6:
+                    drone_translations = torch.tensor([
+                        [1.0, 0.5, 0],
+                        [1.0, -0.5, 0],
+                        [0.0, 0.5, 0],
+                        [0.0, -0.5, 0],
+                        [-1.0, -0.5, 0],
+                        [-1.0, 0.5, 0],
+                    ])
 
             for i in range(self.num_drones):
                 drone_prim = self.drone.spawn(

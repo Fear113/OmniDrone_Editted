@@ -365,7 +365,10 @@ class MAPPOPolicy(object):
         return state_dict
     
     def load_state_dict(self, state_dict):
-        self.actor_params = TensorDictParams(state_dict["actor_params"])
+        # self.actor_params = TensorDictParams(state_dict["actor_params"])
+        with self.actor_params.unlock():
+            test = state_dict["actor_params"].to(self.device)
+            self.actor_params = test
         self.actor_opt = torch.optim.Adam(self.actor_params.parameters(), lr=self.cfg.actor.lr)
         self.critic.load_state_dict(state_dict["critic"])
         self.value_normalizer.load_state_dict(state_dict["value_normalizer"])
