@@ -19,7 +19,8 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-from dataclasses import dataclass
+import copy
+import dataclasses
 
 import omni_drones.utils.kit as kit_utils
 import omni_drones.utils.scene as scene_utils
@@ -59,6 +60,7 @@ class Logistics(IsaacEnv):
         self.num_drones_per_group = 4
         self.group_offset = self.make_group_offset()
         self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
+        self.done_group = None
 
         super().__init__(cfg, headless)
 
@@ -67,15 +69,58 @@ class Logistics(IsaacEnv):
         self.world = World()
 
     def snapshot_state(self):
+        drone_state = self.drone.get_state()
+        groups = []
 
-        # cPos = state['agents']['observation_central']['drones'].cpu().detach().numpy()[:,:,:3]
-        # cRot = state['agents']['observation_central']['drones'].cpu().detach().numpy()[:,:,3:7]
-        # cVel = state['agents']['observation_central']['drones'].cpu().detach().numpy()[:,:,7:13]
-        # initial_state = InitialState([Group(cPos, cRot,\
-        #                                      cVel, True, [ConnectedPayload])])
-        ### pos-3, rot-4, vel-6, heading-3, up-3, throttle-4
+        for i, group in enumerate(self.initial_state.groups):
+            drone_range = range(i * self.num_drones_per_group,
+                                i * self.num_drones_per_group + self.num_drones_per_group)
+            drone_pos = drone_state[..., drone_range, 0:3]
+            drone_rot = drone_state[..., drone_range, 3:7]
+            drone_vel = drone_state[..., drone_range, 7:13]
 
-        raise NotImplementedError # TODO
+            if self.done_group == i:
+                is_transporting = not group.is_transporting
+                if group.is_transporting:
+                    target_payload_idx = group.target_payload_idx + 1 if group.target_payload_idx < self.num_payloads_per_group else None
+                else:
+                    target_payload_idx = group.target_payload_idx
+
+                payloads = []
+                for j, payload in enumerate(group.payloads):
+                    if target_payload_idx == j and group.is_transporting:
+                        _payload = DisconnectedPayload(
+                            payload.target_pos,
+                            payload.target_rot,
+                            payload.target_pos,
+                            payload.target_rot
+                        )
+                        payloads.append(_payload)
+                    elif target_payload_idx == j and not group.is_transporting:
+                        _payload = ConnectedPayload(
+                            payload.target_pos,
+                            payload.target_rot
+                        )
+                        payloads.append(_payload)
+                    else:
+                        payloads.append(payload)
+            else:
+                is_transporting = group.is_transporting
+                target_payload_idx = group.target_payload_idx
+                payloads = group.payloads
+
+            group = Group(
+                drone_pos,
+                drone_rot,
+                drone_vel,
+                target_payload_idx,
+                is_transporting,
+                payloads
+            )
+
+            groups.append(group)
+
+        return StateSnapshot(groups)
 
     def make_group_offset(self):
         group_interval = 2
@@ -112,7 +157,7 @@ class Logistics(IsaacEnv):
             payloads = []
 
             for j in range(self.num_payloads_per_group):
-                payload_target_pos = self.group_offset[i] + torch.tensor([0., 2., j*2], device=self.device)
+                payload_target_pos = self.group_offset[i] + torch.tensor([0., 2., j * 2], device=self.device)
                 payload_target_rot = torch.zeros(4, device=self.device)
                 payload_pos = payload_pos_dist.sample() + self.group_offset[i]
                 payload_rot = euler_to_quaternion(payload_rpy_dist.sample() + self.group_offset[i])
@@ -123,7 +168,6 @@ class Logistics(IsaacEnv):
             )
 
         return StateSnapshot(groups)
-
 
     def _design_scene(self) -> Optional[List[str]]:
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]

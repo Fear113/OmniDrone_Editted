@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 import torch
 
@@ -20,7 +21,7 @@ class Group:
     drone_pos: torch.Tensor
     drone_rot: torch.Tensor
     drone_vel: torch.Tensor
-    target_payload_idx: int
+    target_payload_idx: Optional[int]
     is_transporting: bool
     payloads: list[ConnectedPayload | DisconnectedPayload]
 
