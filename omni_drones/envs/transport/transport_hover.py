@@ -116,14 +116,14 @@ class TransportHover(IsaacEnv):
             torch.as_tensor(payload_mass_scale[1] * self.drone.MASS_0.sum(), device=self.device)
         )
         self.init_pos_dist = D.Uniform(
-            torch.tensor([-3, -3, 1.], device=self.device),
-            torch.tensor([3., 3., 2.5], device=self.device)
+            torch.tensor([-6, -6, 1.], device=self.device),
+            torch.tensor([6., 6., 5.], device=self.device)
         )
         self.init_rpy_dist = D.Uniform(
             torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
             torch.tensor([0., 0., 2.], device=self.device) * torch.pi
         )
-        self.payload_target_pos = torch.tensor([0., 0., 2.], device=self.device)
+        self.payload_target_pos = torch.tensor([0., 0., 2.5], device=self.device)
         self.payload_target_heading = torch.zeros(self.num_envs, 3, device=self.device)
         self.last_distance = torch.zeros(self.num_envs, 1, device=self.device)
 
@@ -140,7 +140,7 @@ class TransportHover(IsaacEnv):
 
         DynamicCuboid(
             "/World/envs/env_0/payloadTargetVis",
-            translation=torch.tensor([0., 0., 2.]),
+            translation=torch.tensor([0., 0., 2.5]),
             scale=torch.tensor([0.75, 0.5, 0.2]),
             color=torch.tensor([0.8, 0.1, 0.1]),
             size=2.01,
@@ -154,7 +154,7 @@ class TransportHover(IsaacEnv):
             disable_gravity=True
         )
 
-        self.group.spawn(translations=[(0, 0, 2.0)], enable_collision=False)
+        self.group.spawn(translations=[(0, 0, 2.5)], enable_collision=False)
         return ["/World/defaultGroundPlane"]
 
     def _set_specs(self):

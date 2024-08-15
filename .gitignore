@@ -138,7 +138,6 @@ videos/
 *.out
 
 # collected data
-*.pt
 urdf/
 *.pkl
 *.pth
