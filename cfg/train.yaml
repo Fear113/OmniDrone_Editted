@@ -1,6 +1,6 @@
 # hydra.job.chdir: false
 
-headless: false
+headless: True
 
 sim: ${task.sim}
 env: ${task.env}
@@ -22,7 +22,7 @@ wandb:
   job_type: train
   entity: marl-drones
   project: omnidrones
-  mode: online # set to 'disabled' when debugging locally
+  mode: disabled # set to 'disabled' when debugging locally
   run_id: 
   monitor_gym: True
   tags: 

@@ -66,6 +66,7 @@ class Logistics(IsaacEnv):
 
         self.drone.initialize(f"/World/envs/env_*/Group_*/{self.drone.name.lower()}_*")
         self.alpha = 0.8
+        self.count = [0 for _ in range(self.num_groups)]
         self.world = World()
 
     def snapshot_state(self):
@@ -311,26 +312,40 @@ class Logistics(IsaacEnv):
     def _compute_reward_and_done(self):
         for i, group in enumerate(self.initial_state.groups):
             if group.is_transporting:
-                pass  # Todo
-            else:
                 payload = group.payloads[group.target_payload_idx]
                 pos = self.drone.pos
                 distance = torch.norm(pos.mean(-2, keepdim=True) - payload.target_pos, dim=-1)
                 truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1)
                 crash = (pos[..., 2] < 0.2).any(-1, keepdim=True)
-                terminated = crash | (distance < 0.23)
+                if distance < 1:
+                    self.count[i] += 1
+                terminated = crash | (self.count[i] > 49)
+                
+            else:
+                payload = group.payloads[group.target_payload_idx]
+                pos = self.drone.pos
+                distance = torch.norm(pos.mean(-2, keepdim=True) - payload.payload_pos, dim=-1)
+                truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1)
+                crash = (pos[..., 2] < 0.2).any(-1, keepdim=True)
+                if distance < 1:
+                    self.count[i] += 1
+                terminated = crash | (self.count[i] > 49)
 
-                return TensorDict(
-                    {
-                        "agents": {
-                            "reward": torch.tensor([0])
-                        },
-                        "done": terminated | truncated,
-                        "terminated": terminated,
-                        "truncated": truncated,
+            if terminated | truncated:
+                self.done_group = i
+                self.count[i] = 0
+
+            return TensorDict(
+                {
+                    "agents": {
+                        "reward": torch.tensor([0])
                     },
-                    self.batch_size,
-                )
+                    "done": terminated | truncated,
+                    "terminated": terminated,
+                    "truncated": truncated,
+                },
+                self.batch_size,
+            )
 
     def create_payload(self, pos, prim_path):
         payload = prim_utils.create_prim(
