@@ -1,12 +1,18 @@
 from dataclasses import dataclass
+from typing import Optional
 
 import torch
 
-class ConnectedPayload:
+@dataclass
+class Payload:
+    target_pos: torch.Tensor
+    target_rot: torch.Tensor
+
+class ConnectedPayload(Payload):
     pass
 
 @dataclass
-class DisconnectedPayload:
+class DisconnectedPayload(Payload):
     payload_pos: torch.Tensor
     payload_rot: torch.Tensor
 
@@ -15,9 +21,10 @@ class Group:
     drone_pos: torch.Tensor
     drone_rot: torch.Tensor
     drone_vel: torch.Tensor
+    target_payload_idx: Optional[int]
     is_transporting: bool
     payloads: list[ConnectedPayload | DisconnectedPayload]
 
 @dataclass
-class InitialState:
+class StateSnapshot:
     groups: list[Group]

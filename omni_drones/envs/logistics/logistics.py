@@ -19,7 +19,8 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-from dataclasses import dataclass
+import copy
+import dataclasses
 
 import omni_drones.utils.kit as kit_utils
 import omni_drones.utils.scene as scene_utils
@@ -30,7 +31,7 @@ import torch
 import torch.distributions as D
 import numpy as np
 
-from omni_drones.envs.logistics.utils import InitialState, ConnectedPayload, DisconnectedPayload
+from omni_drones.envs.logistics.utils import StateSnapshot, ConnectedPayload, DisconnectedPayload, Group
 from omni_drones.views import RigidPrimView
 
 from omni.isaac.core import World
@@ -49,54 +50,124 @@ from pxr import Gf, PhysxSchema, UsdGeom, UsdPhysics
 from omni.kit.commands import execute
 
 
-def sample_from_grid(cells: torch.Tensor, n):
-    idx = torch.randperm(cells.shape[0], device=cells.device)[:n]
-    return cells[idx]
-
-
 class Logistics(IsaacEnv):
-    def __init__(self, cfg, headless, initial_state: Optional[InitialState] = None):
+    def __init__(self, cfg, headless, initial_state: Optional[StateSnapshot] = None):
+        self.device = torch.device("cuda:0")
         self.time_encoding = cfg.task.time_encoding
         self.safe_distance = cfg.task.safe_distance
-        self.initial_state = initial_state
         self.num_groups = cfg.task.num_groups
-        self.num_drones_per_group = cfg.task.num_drones_per_group
         self.num_payloads_per_group = cfg.task.num_payloads_per_group
+        self.num_drones_per_group = 4
+        self.group_offset = self.make_group_offset()
+        self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
+        self.done_group = None
 
         super().__init__(cfg, headless)
 
         self.drone.initialize(f"/World/envs/env_*/Group_*/{self.drone.name.lower()}_*")
-        self.init_poses = self.drone.get_world_poses(clone=True)
-
-        # initial state distribution
-        self.cells = (
-            make_cells([-2, -2, 0.5], [2, 2, 2], [0.5, 0.5, 0.25])
-            .flatten(0, -2)
-            .to(self.device)
-        )
-
-        self.init_rpy_dist = D.Uniform(
-            torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
-            torch.tensor([0., 0., 0.], device=self.device) * torch.pi
-        )
-        if initial_state is not None:
-            pass
-        else:
-            for i, group in enumerate(self.initial_state.groups):
-                if group.is_transporting:
-                    self.target_pos = torch.tensor([0.0, 0.0, 1.5], device=self.device)
-                    self.target_pos = self.target_pos.expand(self.num_envs, 1, 3)
-                else:
-                    self.target_pos = torch.tensor([
-                    [0.0,0.0,1.5]
-                ], device=self.device)
-            self.target_heading = torch.zeros(self.num_envs, 3, device=self.device)
-            self.target_heading[..., 0] = -1
-
         self.alpha = 0.8
         self.world = World()
-        self.last_cost_h = torch.zeros(self.num_envs, 1, device=self.device)
-        self.last_cost_pos = torch.zeros(self.num_envs, 1, device=self.device)
+
+    def snapshot_state(self):
+        drone_state = self.drone.get_state()
+        groups = []
+
+        for i, group in enumerate(self.initial_state.groups):
+            drone_range = range(i * self.num_drones_per_group,
+                                i * self.num_drones_per_group + self.num_drones_per_group)
+            drone_pos = drone_state[..., drone_range, 0:3]
+            drone_rot = drone_state[..., drone_range, 3:7]
+            drone_vel = drone_state[..., drone_range, 7:13]
+
+            if self.done_group == i:
+                is_transporting = not group.is_transporting
+                if group.is_transporting:
+                    target_payload_idx = group.target_payload_idx + 1 if group.target_payload_idx < self.num_payloads_per_group else None
+                else:
+                    target_payload_idx = group.target_payload_idx
+
+                payloads = []
+                for j, payload in enumerate(group.payloads):
+                    if target_payload_idx == j and group.is_transporting:
+                        _payload = DisconnectedPayload(
+                            payload.target_pos,
+                            payload.target_rot,
+                            payload.target_pos,
+                            payload.target_rot
+                        )
+                        payloads.append(_payload)
+                    elif target_payload_idx == j and not group.is_transporting:
+                        _payload = ConnectedPayload(
+                            payload.target_pos,
+                            payload.target_rot
+                        )
+                        payloads.append(_payload)
+                    else:
+                        payloads.append(payload)
+            else:
+                is_transporting = group.is_transporting
+                target_payload_idx = group.target_payload_idx
+                payloads = group.payloads
+
+            group = Group(
+                drone_pos,
+                drone_rot,
+                drone_vel,
+                target_payload_idx,
+                is_transporting,
+                payloads
+            )
+
+            groups.append(group)
+
+        return StateSnapshot(groups)
+
+    def make_group_offset(self):
+        group_interval = 2
+        group_offset = torch.zeros(self.num_groups, 3, device=self.device)
+        group_offset[:, 0] = torch.arange(start=0, end=group_interval * self.num_groups, step=group_interval,
+                                          device=self.device)
+
+        return group_offset
+
+    def make_initial_state(self):
+        drone_formation = torch.tensor([
+            [1, 1, 0.5],
+            [1, -1, 0.5],
+            [-1, 1, 0.5],
+            [-1, -1, 0.5]
+        ], device=self.device)
+
+        payload_pos_dist = D.Uniform(
+            torch.tensor([-1., -1., 1.], device=self.device),
+            torch.tensor([1., 1., 1.], device=self.device)
+        )
+        payload_rpy_dist = D.Uniform(
+            torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
+            torch.tensor([0., 0., 2.], device=self.device) * torch.pi
+        )
+
+        groups = []
+        for i in range(self.num_groups):
+            drone_pos = drone_formation + self.group_offset[i]
+            drone_rot = torch.zeros(4, device=self.device)
+            drone_vel = torch.zeros(6, device=self.device)
+            target_payload_idx = 0
+            is_transporting = False
+            payloads = []
+
+            for j in range(self.num_payloads_per_group):
+                payload_target_pos = self.group_offset[i] + torch.tensor([0., 2., j * 2], device=self.device)
+                payload_target_rot = torch.zeros(4, device=self.device)
+                payload_pos = payload_pos_dist.sample() + self.group_offset[i]
+                payload_rot = euler_to_quaternion(payload_rpy_dist.sample() + self.group_offset[i])
+                payloads.append(DisconnectedPayload(payload_target_pos, payload_target_rot, payload_pos, payload_rot))
+
+            groups.append(
+                Group(drone_pos, drone_rot, drone_vel, target_payload_idx, is_transporting, payloads)
+            )
+
+        return StateSnapshot(groups)
 
     def _design_scene(self) -> Optional[List[str]]:
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
@@ -104,95 +175,41 @@ class Logistics(IsaacEnv):
         self.drone: MultirotorBase = drone_model(cfg=cfg)
         scene_utils.design_scene()
 
-        # set group position offset
-        if self.num_groups == 1:
-            group_offset = torch.tensor([[0.0, 0.0, 0.0]], device=self.device)
-        else:
-            raise ValueError(f"num_groups: {self.num_groups} not supported")
-
-        # set formation of initial position
-        if self.num_drones_per_group == 6:
-            formation = torch.tensor([
-                [1.7321, -1, 2.0],
-                [0, -2, 2.0],
-                [-1.7321, -1, 2.0],
-                [-1.7321, 1.0, 2.0],
-                [0.0, 2.0, 2.0],
-                [1.7321, 1.0, 2.0],
-            ], device=self.device)
-        elif self.num_drones_per_group ==4:
-            formation = torch.tensor([
-                [1, 1, 0.5],
-                [1, -1, 0.5],
-                [-1,1, 0.5],
-                [-1,-1,0.5]
-            ], device=self.device)
-        else:
-            raise ValueError(f"num_drones_per_group: {self.num_drones_per_group} not supported")
-        self.formation = formation.clone()
-        # set up initial state
-        if self.initial_state is None:
-            for i in range(self.num_groups):
-                drone_pos = formation + group_offset[i]
-                # drone_rot = None # TODO
-                drone_rot = torch.tensor([[0,0,0,0]] * self.num_drones_per_group,device=self.device)
-                # drone_vel = None # TODO
-                drone_vel = torch.tensor([[0,0,0]]* self.num_drones_per_group,device=self.device)
-                is_transporting = False
-                payloads = []
-                for j in range(self.num_payloads_per_group):
-                    payload_pos = torch.tensor([[0.0, 0.0, 0.0]], device=self.device)
-
-
         for i, group in enumerate(self.initial_state.groups):
             group_prim_path = f"/World/envs/env_0/Group_{i}"
             # spawn drones
             if group.is_transporting:
                 group_cfg = TransportationCfg(num_drones=self.cfg.task.num_drones_per_group)
                 self.group = TransportationGroup(drone=self.drone, cfg=group_cfg)
-                # self.group.initialize()
-                self.group.spawn(translations=group_offset[i], enable_collision=True, drone_translations_origin=self.initial_state.groups[0].drone_pos)
+                self.group.spawn(translations=self.group_offset[i], enable_collision=True,
+                                 drone_translations_origin=self.initial_state.groups[0].drone_pos)
             else:
                 prim_utils.create_prim(group_prim_path)  # xform
                 drone_prim_paths = [f"{group_prim_path}/{self.drone.name.lower()}_{j}" for j in
                                     range(self.num_drones_per_group)]
-                self.drone.spawn(translations=formation + group_offset[i], prim_paths=drone_prim_paths)
-
-            # self.recover(group.drone_pos, group.drone_rot, group.drone_vel, i)
+                self.drone.spawn(translations=group.drone_pos, prim_paths=drone_prim_paths)
 
             # spawn payload
             for j, payload in enumerate(group.payloads):
                 if isinstance(payload, DisconnectedPayload):
-                    self.create_payload(group_offset[i], f"{group_prim_path}/payload_{j}")
-
-
+                    self.create_payload(self.group_offset[i], f"{group_prim_path}/payload_{j}")
 
     def _reset_idx(self, env_ids: torch.Tensor):
         self.drone._reset_idx(env_ids)
 
         if self.initial_state.groups[0].drone_pos is None:
             pos = torch.tensor([[[1.0, 1.0, 2.5],
-                [1.0, -1.0, 2.5],
-                [-1.0, 1.0, 2.5],
-                [-1.0, -1.0, 2.5]
-                ]], device=self.device)
+                                 [1.0, -1.0, 2.5],
+                                 [-1.0, 1.0, 2.5],
+                                 [-1.0, -1.0, 2.5]
+                                 ]], device=self.device)
         else:
             pos = torch.tensor(self.initial_state.groups[0].drone_pos, device=self.device)
-        rpy = self.init_rpy_dist.sample((*env_ids.shape, self.drone.n))
+        rpy = torch.zeros(*env_ids.shape, self.drone.n, 3, device=self.device)
         rot = euler_to_quaternion(rpy)
         vel = torch.zeros(len(env_ids), self.drone.n, 6, device=self.device)
         self.drone.set_world_poses(pos, rot, env_ids)
         self.drone.set_velocities(vel, env_ids)
-        if pos.dim()==3:
-            temp = torch.vmap(cost_formation_hausdorff)(
-            pos.reshape(pos.shape[0],1,12), desired_p=self.formation
-            )
-            self.last_cost_h[env_ids] = temp.squeeze(1)
-        else:
-            self.last_cost_h[env_ids] = torch.vmap(cost_formation_hausdorff)(
-            pos, desired_p=self.formation
-        )
-
 
     def _set_specs(self):
         drone_state_dim = self.drone.state_spec.shape[0]
@@ -204,8 +221,6 @@ class Logistics(IsaacEnv):
         observation_spec = CompositeSpec({
             "obs_self": UnboundedContinuousTensorSpec((1, obs_self_dim)),
             "obs_others": UnboundedContinuousTensorSpec((self.drone.n - 1, 13 + 1)),
-            # "pos": UnboundedContinuousTensorSpec((self.drone.n, 3)), 
-            # "rotation": UnboundedContinuousTensorSpec((self.drone.n, 4))
         }).to(self.device)
         observation_central_spec = CompositeSpec({
             "drones": UnboundedContinuousTensorSpec((self.drone.n, drone_state_dim)),
@@ -223,7 +238,7 @@ class Logistics(IsaacEnv):
         }).expand(self.num_envs).to(self.device)
         self.reward_spec = CompositeSpec({
             "agents": {
-                "reward": UnboundedContinuousTensorSpec((self.drone.n, 1))
+                "reward": UnboundedContinuousTensorSpec((1,), dtype=torch.int)
             }
         }).expand(self.num_envs).to(self.device)
         self.done_spec = CompositeSpec({
@@ -247,8 +262,6 @@ class Logistics(IsaacEnv):
     def _compute_state_and_obs(self):
         for i, group in enumerate(self.initial_state.groups):
             if group.is_transporting:
-                # self.drone_states = self.drone.get_state()
-                # self.group.get_state()
                 obs = TensorDict({}, [self.num_envs, self.drone.n])
                 state = TensorDict({}, self.batch_size)
 
@@ -257,12 +270,12 @@ class Logistics(IsaacEnv):
                         "observation": obs,
                         "observation_central": state,
                     }
-                    # "stats": self.stats
                 }, self.batch_size)
             else:
                 self.root_states = self.drone.get_state()
                 pos = self.drone.pos
-                self.root_states[..., :3] = self.target_pos - pos
+                payload = group.payloads[group.target_payload_idx]
+                self.root_states[..., :3] = payload.target_pos - pos
 
                 obs_self = [self.root_states]
                 if self.time_encoding:
@@ -293,57 +306,24 @@ class Logistics(IsaacEnv):
                         "observation": obs,
                         "observation_central": state,
                     }
-                    # "stats": self.stats
                 }, self.batch_size)
 
     def _compute_reward_and_done(self):
-
         for i, group in enumerate(self.initial_state.groups):
             if group.is_transporting:
-                pass #Todo
+                pass  # Todo
             else:
+                payload = group.payloads[group.target_payload_idx]
                 pos = self.drone.pos
-
-                cost_h = cost_formation_hausdorff(pos, desired_p=self.formation)
-                
-                distance = torch.norm(pos.mean(-2, keepdim=True) - self.target_pos, dim=-1)
-
-                reward_formation =  1 / (1 + torch.square(cost_h * 1.6)) 
-                # reward_pos = 1 / (1 + cost_pos)
-
-                # reward_formation = torch.exp(- cost_h * 1.6)
-                reward_pos = torch.exp(- distance)
-                reward_heading = self.drone.heading[..., 0].mean(-1, True)
-
-                separation = self.drone_pdist.min(dim=-2).values.min(dim=-2).values
-                reward_separation = torch.square(separation / self.safe_distance).clamp(0, 1)
-                reward = (
-                    reward_separation * (
-                        reward_formation 
-                        + reward_formation * (reward_pos + reward_heading)
-                        + 0.4 * reward_pos
-                    )
-                )
-
-                # self.last_cost_l[:] = cost_l
-                self.last_cost_h[:] = cost_h
-                self.last_cost_pos[:] = torch.square(distance)
-
+                distance = torch.norm(pos.mean(-2, keepdim=True) - payload.target_pos, dim=-1)
                 truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1)
                 crash = (pos[..., 2] < 0.2).any(-1, keepdim=True)
-
-                # terminated = crash | (separation<0.23)
-                terminated = crash | (distance<0.23)
-                # self.stats["return"].add_(reward)
-                # self.stats["episode_len"][:] = self.progress_buf.unsqueeze(-1)
-                # # self.stats["cost_laplacian"] -= cost_l
-                # self.stats["cost_hausdorff"].lerp_(cost_h, (1-self.alpha))
-                # self.stats["pos_error"].lerp_(distance, (1-self.alpha))
+                terminated = crash | (distance < 0.23)
 
                 return TensorDict(
                     {
                         "agents": {
-                            "reward": reward.unsqueeze(1).expand(-1, self.drone.n, 1)
+                            "reward": torch.tensor([0])
                         },
                         "done": terminated | truncated,
                         "terminated": terminated,
@@ -352,18 +332,12 @@ class Logistics(IsaacEnv):
                     self.batch_size,
                 )
 
-    # def recover(self, pos, rot, vel, env_ids):
-    #     if not(pos is None) or not (rot is None):
-    #         self.drone.set_world_poses(pos, rot, env_ids) ######### not env_ids, but group ids should be applied. 
-    #     if vel:
-    #         self.drone.set_velocities(vel, env_ids)
-
     def create_payload(self, pos, prim_path):
         payload = prim_utils.create_prim(
             prim_path=prim_path,
             prim_type="Cube",
             translation=pos,
-            scale=(0.75, 0.5, 0.2), 
+            scale=(0.75, 0.5, 0.2),
         )
 
         script_utils.setRigidBody(payload, "convexHull", False)
@@ -376,20 +350,3 @@ class Logistics(IsaacEnv):
             angular_damping=0.1,
             linear_damping=0.1
         )
-
-
-@torch.vmap
-def cost_formation_hausdorff(p: torch.Tensor, desired_p: torch.Tensor) -> torch.Tensor:
-    if p.dim()==1:
-        p = p.reshape(4,3)
-    p = p - p.mean(-2, keepdim=True)
-    desired_p = desired_p - desired_p.mean(-2, keepdim=True)
-    cost = torch.max(directed_hausdorff(p, desired_p), directed_hausdorff(desired_p, p))
-    return cost.unsqueeze(-1)
-def directed_hausdorff(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
-    """
-    p: (*, n, dim)
-    q: (*, m, dim)
-    """
-    d = torch.cdist(p, q, p=2).min(-1).values.max(-1).values
-    return d
