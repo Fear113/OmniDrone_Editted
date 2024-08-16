@@ -342,7 +342,7 @@ class Logistics(IsaacEnv):
 
         script_utils.setRigidBody(payload, "convexHull", False)
         UsdPhysics.MassAPI.Apply(payload)
-        payload.GetAttribute("physics:mass").Set(2.0)
+        payload.GetAttribute("physics:mass").Set(2.0) # TODO: adjust mass
         payload.GetAttribute("physics:collisionEnabled").Set(True)
 
         kit_utils.set_rigid_body_properties(

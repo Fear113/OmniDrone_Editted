@@ -7,6 +7,7 @@ import torch
 import numpy as np
 import wandb
 from omegaconf import OmegaConf
+import imageio
 
 from omni_drones import CONFIG_PATH, init_simulation_app
 from omni_drones.utils.torchrl import SyncDataCollector, AgentSpec
@@ -221,12 +222,7 @@ def main(cfg):
         }
 
         if len(frames):
-            video_array = np.stack(frames).transpose(0, 3, 1, 2)
-            info["recording"] = wandb.Video(
-                video_array, 
-                fps=0.5 / cfg.sim.dt, 
-                format="mp4"
-            )
+            imageio.mimsave("video.mp4", frames, fps=0.5 / cfg.sim.dt)
 
         frames.clear()
         return info
@@ -255,9 +251,8 @@ def main(cfg):
 
         if save_interval > 0 and i % save_interval == 0:
             if hasattr(policy, "state_dict"):
-                ckpt_path = os.path.join(run.dir, f"checkpoint_{collector._frames}.pt")
-                logging.info(f"Save checkpoint to {str(ckpt_path)}")
-                torch.save(policy.state_dict(), ckpt_path)
+                logging.info(f"Save checkpoint")
+                torch.save(policy.state_dict(), "checkpoint.pt")
 
         run.log(info)
         print(OmegaConf.to_yaml({k: v for k, v in info.items() if isinstance(v, float)}))
