@@ -100,7 +100,9 @@ class Logistics(IsaacEnv):
                     elif target_payload_idx == j and not group.is_transporting:
                         _payload = ConnectedPayload(
                             payload.target_pos,
-                            payload.target_rot
+                            payload.target_rot,
+                            torch.zeros((1, 32)),
+                            torch.zeros((1, 32)),
                         )
                         payloads.append(_payload)
                     else:
