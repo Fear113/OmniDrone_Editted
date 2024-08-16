@@ -9,7 +9,8 @@ class Payload:
     target_rot: torch.Tensor
 
 class ConnectedPayload(Payload):
-    pass
+    joint_pos: torch.Tensor
+    joint_vel: torch.Tensor
 
 @dataclass
 class DisconnectedPayload(Payload):
