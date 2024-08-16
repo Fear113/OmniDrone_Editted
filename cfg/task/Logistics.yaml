@@ -12,6 +12,7 @@ env:
 
 num_groups: 1
 num_payloads_per_group: 1
+num_drones_per_group: 4
 
 drone_model: Hummingbird
 force_sensor: false
