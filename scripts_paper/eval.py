@@ -14,7 +14,6 @@ from omni_drones.learning import (
     TDMPCPolicy,
 )
 
-# modify - 1
 class Every:
     def __init__(self, func, steps):
         self.func = func
@@ -26,7 +25,6 @@ class Every:
             self.func(*args, **kwargs)
         self.i += 1
 import imageio
-# modify - 1
 
 algos = {
     "mappo": MAPPOPolicy,
@@ -61,7 +59,6 @@ def main(cfg):
     if formation_checkpoint is not None:
         formation_policy.load_state_dict(torch.load(formation_checkpoint))
 
-# modify - 2
     def record_frame(frames, *args, **kwargs):
             frame = env.render(mode="rgb_array")
             frames.append(frame)
@@ -114,7 +111,6 @@ def main(cfg):
         print("completed the total video")
 
     print("done everything")
-# modify - 2
 
 if __name__ == "__main__":
     main()
