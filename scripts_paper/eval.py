@@ -14,16 +14,6 @@ from omni_drones.learning import (
     TDMPCPolicy,
 )
 
-class Every:
-    def __init__(self, func, steps):
-        self.func = func
-        self.steps = steps
-        self.i = 0
-
-    def __call__(self, *args, **kwargs):
-        if self.i % self.steps == 0:
-            self.func(*args, **kwargs)
-        self.i += 1
 import imageio
 
 algos = {
@@ -60,25 +50,19 @@ def main(cfg):
         formation_policy.load_state_dict(torch.load(formation_checkpoint))
 
     def record_frame(frames, *args, **kwargs):
-            frame = env.render(mode="rgb_array")
-            frames.append(frame)
+        frame = env.render(mode="rgb_array")
+        frames.append(frame)
 
-    frames_transport = []
-    frames_formation = []
+    frames = []
     seed = 1
 
     env.enable_render(True)
-    env.eval()
     env.set_seed(seed)
     state = env.reset()
 
-    print("start formation")
-
     while not state['done']:
         state = env.step(formation_policy(state, deterministic=True))['next']
-        record_frame(frames_formation)
-
-    print("finish formation")
+        record_frame(frames)
 
     with torch.no_grad():
         state_snapshot = env.snapshot_state()
@@ -89,28 +73,13 @@ def main(cfg):
     env = env_class(cfg, headless=cfg.headless, initial_state=state_snapshot)  
     state = env.reset()
 
-    print("start transport")
-
     while not state['done']:
         state = env.step(transport_policy(state, deterministic=True))['next']
-        record_frame(frames_transport)
+        record_frame(frames)
 
-    print("finish transport")
-
-    if len(frames_formation):
-        imageio.mimsave("result_video/formation_video.mp4", frames_formation, fps=0.5 / cfg.sim.dt)
-        print("completed the formation video")
-    if len(frames_transport):
-        imageio.mimsave("result_video/transport_video.mp4", frames_transport, fps=0.5 / cfg.sim.dt)
-        print("completed the transport video")
-    
-    frames_total = frames_formation + frames_formation
-
-    if len(frames_total):
-        imageio.mimsave("result_video/total_video.mp4", frames_total, fps=0.5 / cfg.sim.dt)
-        print("completed the total video")
-
-    print("done everything")
+    if len(frames):
+        imageio.mimsave("result_video/video.mp4", frames, fps=0.5 / cfg.sim.dt)
+        print("completed the video")
 
 if __name__ == "__main__":
     main()
