@@ -55,32 +55,44 @@ def main(cfg):
 
     frames = []
     seed = 1
+    num_payloads = cfg.task.num_payloads_per_group
 
     env.enable_render(True)
     env.set_seed(seed)
     state = env.reset()
 
-    while not state['done']:
-        state = env.step(formation_policy(state, deterministic=True))['next']
-        record_frame(frames)
+    for i in range(num_payloads):
+        # formation
+        while not state['done']:
+            state = env.step(formation_policy(state, deterministic=True))['next']
+            record_frame(frames)
 
-    with torch.no_grad():
-        state_snapshot = env.snapshot_state()
+        with torch.no_grad():
+            state_snapshot = env.snapshot_state()
 
-    simulation_app.context.close_stage()
-    simulation_app.context.new_stage()
+        simulation_app.context.close_stage()
+        simulation_app.context.new_stage()
 
-    env = env_class(cfg, headless=cfg.headless, initial_state=state_snapshot)  
-    state = env.reset()
+        env = env_class(cfg, headless=cfg.headless, initial_state=state_snapshot)   
+        state = env.reset()
 
-    while not state['done']:
-        state = env.step(transport_policy(state, deterministic=True))['next']
-        record_frame(frames)
+        # transport
+        while not state['done']:
+            state = env.step(transport_policy(state, deterministic=True))['next']
+            record_frame(frames)
+
+        with torch.no_grad():
+            state_snapshot = env.snapshot_state()
+
+        simulation_app.context.close_stage()
+        simulation_app.context.new_stage()
+
+        env = env_class(cfg, headless=cfg.headless, initial_state=state_snapshot)  
+        state = env.reset()
 
     if len(frames):
         imageio.mimsave("result_video/video.mp4", frames, fps=0.5 / cfg.sim.dt)
         print("completed the video")
 
 if __name__ == "__main__":
-    main()
     main()
