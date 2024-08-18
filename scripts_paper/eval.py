@@ -26,7 +26,8 @@ algos = {
 }
 
 transport_checkpoint = None
-formation_checkpoint = None
+formation_checkpoint = "./formation_checkpoint.pt"
+# "./formation_checkpoint.pt"
 
 @hydra.main(version_base=None, config_path=CONFIG_PATH, config_name="train")
 def main(cfg):
@@ -50,7 +51,9 @@ def main(cfg):
     state = env.reset()
     while True:
         while not state['done']:
-            state = env.step(transport_policy(state, deterministic=True))['next']
+            random_action = env.rand_action(state)
+            state = env.step(random_action)['next']
+            # state = env.step(transport_policy(state, deterministic=True))['next']
 
         state_snapshot = env.snapshot_state()
         simulation_app.context.close_stage()
