@@ -154,7 +154,7 @@ class Logistics(IsaacEnv):
         groups = []
         for i in range(self.num_groups):
             drone_pos = drone_formation + self.group_offset[i]
-            drone_rot = torch.zeros((self.num_drones_per_group,4), device=self.device)
+            drone_rot = torch.FloatTensor([[1.0,0.,0.,0.],[1.0,0.,0.,0.],[1.0,0.,0.,0.],[1.0,0.,0.,0.]]).to(device=self.device)
             drone_vel = torch.zeros((self.num_drones_per_group,6), device=self.device)
             target_payload_idx = 0
             is_transporting = False
@@ -202,18 +202,18 @@ class Logistics(IsaacEnv):
         self.drone._reset_idx(env_ids)
 
         # if self.initial_state.groups[0].drone_pos is None:
-        #     pos = torch.tensor([[[1.0, 1.0, 2.5],
-        #                          [1.0, -1.0, 2.5],
-        #                          [-1.0, 1.0, 2.5],
-        #                          [-1.0, -1.0, 2.5]
-        #                          ]], device=self.device)
+            # pos = torch.tensor([[[1.0, 1.0, 1.5],
+            #                      [1.0, -1.0, 1.5],
+            #                      [-1.0, 1.0, 1.5],
+            #                      [-1.0, -1.0, 1.5]
+            #                      ]], device=self.device)
         #     rpy = torch.zeros(*env_ids.shape, self.drone.n, 3, device=self.device)
         #     rot = euler_to_quaternion(rpy)
         #     vel = torch.zeros(len(env_ids), self.drone.n, 6, device=self.device)
         # else:
-        pos = self.initial_state.groups[0].drone_pos.clone().detach().to(device=self.device)
-        rot = self.initial_state.groups[0].drone_rot.clone().detach().to(device=self.device)
-        vel = self.initial_state.groups[0].drone_vel.clone().detach().to(device=self.device)
+        pos = self.initial_state.groups[0].drone_pos.clone().detach().to(device=self.device).unsqueeze(dim=0)
+        rot = self.initial_state.groups[0].drone_rot.clone().detach().to(device=self.device).unsqueeze(dim=0)
+        vel = self.initial_state.groups[0].drone_vel.clone().detach().to(device=self.device).unsqueeze(dim=0)
         self.drone.set_world_poses(pos, rot, env_ids)
         self.drone.set_velocities(vel, env_ids)
 

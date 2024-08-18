@@ -51,9 +51,9 @@ def main(cfg):
     state = env.reset()
     while True:
         while not state['done']:
-            random_action = env.rand_action(state)
-            state = env.step(random_action)['next']
-            # state = env.step(transport_policy(state, deterministic=True))['next']
+            # random_action = env.rand_action(state)
+            # state = env.step(random_action)['next']
+            state = env.step(transport_policy(state, deterministic=True))['next']
 
         state_snapshot = env.snapshot_state()
         simulation_app.context.close_stage()
