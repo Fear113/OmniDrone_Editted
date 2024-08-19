@@ -1,3 +1,5 @@
+from typing import Optional
+
 import hydra
 from omegaconf import OmegaConf
 import torch
@@ -13,8 +15,15 @@ from omni_drones.learning import (
     MATD3Policy,
     TDMPCPolicy,
 )
-
+from torchrl.envs.transforms import (
+    TransformedEnv,
+    InitTracker,
+    Compose,
+)
 import imageio
+from omni_drones.utils.torchrl.transforms import (
+    ravel_composite,
+)
 
 algos = {
     "mappo": MAPPOPolicy,
@@ -27,7 +36,7 @@ algos = {
     "tdmpc": TDMPCPolicy,
 }
 
-transport_checkpoint = None
+transport_checkpoint = "./transport_checkpoint.pt"
 formation_checkpoint = "./formation_checkpoint.pt"
 # "./formation_checkpoint.pt"
 
@@ -39,20 +48,48 @@ def main(cfg):
     simulation_app = init_simulation_app(cfg)
 
     from omni_drones.envs.isaac_env import IsaacEnv
-    env_class = IsaacEnv.REGISTRY[cfg.task.name]
-    env = env_class(cfg, headless=cfg.headless)
-    agent_spec: AgentSpec = env.agent_spec["drone"]
-    transport_policy = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=agent_spec, device="cuda")
-    formation_policy = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=agent_spec, device="cuda")
+    from omni_drones.envs.logistics.utils import StateSnapshot
 
-    if transport_checkpoint is not None:
-        transport_policy.load_state_dict(torch.load(transport_checkpoint))
-    if formation_checkpoint is not None:
-        formation_policy.load_state_dict(torch.load(formation_checkpoint))
+    def get_env(name, config_path, headless, initial_state: Optional[StateSnapshot] = None):
+        from omni_drones.envs.isaac_env import IsaacEnv
 
-    def record_frame(frames, *args, **kwargs):
-        frame = env.render(mode="rgb_array")
-        frames.append(frame)
+        cfg = hydra.compose(config_name="train", overrides=[f"task={config_path}"])
+        OmegaConf.resolve(cfg)
+        OmegaConf.set_struct(cfg, False)
+
+        if initial_state is None:
+            env = IsaacEnv.REGISTRY[name](cfg, headless=headless)
+        else:
+            env = IsaacEnv.REGISTRY[name](cfg, headless=headless, initial_state=initial_state)
+
+        transforms = [InitTracker()]
+        if cfg.task.get("ravel_obs", False):
+            transform = ravel_composite(env.observation_spec, ("agents", "observation"))
+            transforms.append(transform)
+        env = TransformedEnv(env, Compose(*transforms)).eval()
+
+        env.set_seed(cfg.seed)
+
+        return env
+
+
+    transport_env = get_env(name='TransportHover', config_path='Transport/TransportHover', headless=True)
+    transport_policy = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=transport_env.agent_spec["drone"],
+                                                    device="cuda")
+    transport_policy.load_state_dict(torch.load(transport_checkpoint))
+    simulation_app.context.close_stage()
+    simulation_app.context.new_stage()
+
+    formation_env = get_env(name='Formation', config_path='Formation', headless=True)
+    formation_policy = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=formation_env.agent_spec["drone"],
+                                                    device="cuda")
+    formation_policy.load_state_dict(torch.load(formation_checkpoint))
+    simulation_app.context.close_stage()
+    simulation_app.context.new_stage()
+
+    env = get_env(name='Logistics', config_path='Logistics', headless=cfg.headless)
+
+
 
     frames = []
     seed = 1
@@ -66,7 +103,7 @@ def main(cfg):
         # formation
         while not state['done']:
             state = env.step(formation_policy(state, deterministic=True))['next']
-            record_frame(frames)
+            record_frame(frames, env)
 
         with torch.no_grad():
             state_snapshot = env.snapshot_state()
@@ -74,13 +111,14 @@ def main(cfg):
         simulation_app.context.close_stage()
         simulation_app.context.new_stage()
 
-        env = env_class(cfg, headless=cfg.headless, initial_state=state_snapshot)   
+        env = get_env(name='Logistics', config_path='Logistics', headless=cfg.headless, initial_state=state_snapshot)
         state = env.reset()
 
         # transport
         while not state['done']:
-            state = env.step(transport_policy(state, deterministic=True))['next']
-            record_frame(frames)
+            transport_state = env.get_transport_state()
+            state = env.step(transport_policy(transport_state))['next']
+            record_frame(frames, env)
 
         with torch.no_grad():
             state_snapshot = env.snapshot_state()
@@ -88,12 +126,17 @@ def main(cfg):
         simulation_app.context.close_stage()
         simulation_app.context.new_stage()
 
-        env = env_class(cfg, headless=cfg.headless, initial_state=state_snapshot)  
+        env = get_env(name='Logistics', config_path='Logistics', headless=cfg.headless, initial_state=state_snapshot)
         state = env.reset()
 
     if len(frames):
         imageio.mimsave("result_video/video.mp4", frames, fps=0.5 / cfg.sim.dt)
         print("completed the video")
+
+
+def record_frame(frames, env, *args, **kwargs):
+    frame = env.render(mode="rgb_array")
+    frames.append(frame)
 
 if __name__ == "__main__":
     main()
