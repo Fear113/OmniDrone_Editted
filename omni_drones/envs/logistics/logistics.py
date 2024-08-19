@@ -359,25 +359,9 @@ class Logistics(IsaacEnv):
             else:
                 payload = group.payloads[group.target_payload_idx]
                 pos = self.drone.pos
-
-                cost_h = cost_formation_hausdorff(pos, desired_p=self.formation)
                 target_pos = payload.payload_pos.clone().detach()
                 target_pos[2] +=2
                 distance = torch.norm(pos.mean(-2, keepdim=True) - target_pos, dim=-1)
-
-                reward_formation =  1 / (1 + torch.square(cost_h * 1.6)) 
-                reward_pos = torch.exp(- distance)
-                reward_heading = self.drone.heading[..., 0].mean(-1, True)
-
-                separation = self.drone_pdist.min(dim=-2).values.min(dim=-2).values
-                reward_separation = torch.square(separation / self.safe_distance).clamp(0, 1)
-                # reward = (
-                #     reward_separation * (
-                #         reward_formation 
-                #         + reward_formation * (reward_pos + reward_heading)
-                #         + 0.4 * reward_pos
-                #     )
-                # )
                 reward = torch.FloatTensor([[0]]).to(device=self.device)
                 truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1)
                 crash = (pos[..., 2] < 0.2).any(-1, keepdim=True)
@@ -419,22 +403,3 @@ class Logistics(IsaacEnv):
             angular_damping=0.1,
             linear_damping=0.1
         )
-
-
-
-
-@torch.vmap
-def cost_formation_hausdorff(p: torch.Tensor, desired_p: torch.Tensor) -> torch.Tensor:
-    if p.dim()==1:
-        p = p.reshape(4,3)
-    p = p - p.mean(-2, keepdim=True)
-    desired_p = desired_p - desired_p.mean(-2, keepdim=True)
-    cost = torch.max(directed_hausdorff(p, desired_p), directed_hausdorff(desired_p, p))
-    return cost.unsqueeze(-1)
-def directed_hausdorff(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
-    """
-    p: (*, n, dim)
-    q: (*, m, dim)
-    """
-    d = torch.cdist(p, q, p=2).min(-1).values.max(-1).values
-    return d
