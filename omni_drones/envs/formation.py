@@ -31,9 +31,11 @@ from omni_drones.utils.torch import cpos, off_diag, others, make_cells, euler_to
 from omni_drones.robots.drone import MultirotorBase
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torchrl.data import CompositeSpec, UnboundedContinuousTensorSpec, DiscreteTensorSpec
+import numpy as np
+
+targetposition = [0,0,0]
 
 REGULAR_HEXAGON = [
-    [0, 0, 0],
     [1.7321, -1, 0],
     [0, -2, 0],
     [-1.7321, -1, 0],
@@ -49,8 +51,15 @@ REGULAR_TETRAGON = [
     [-1, -1, 0],
     [-1, 1, 0],
 ]
+REGULAR_SQUARE =[
+    [1,1,1],
+    [1,-1,1],
+    [-1,1,1],
+    [-1,-1,1],
+]
 
 FORMATIONS = {
+    "squre": REGULAR_SQUARE,
     "hexagon": REGULAR_HEXAGON,
     "tetragon": REGULAR_TETRAGON,
 }
@@ -96,7 +105,7 @@ class Formation(IsaacEnv):
 
         # initial state distribution
         self.cells = (
-            make_cells([-2, -2, 0.5], [2, 2, 2], [0.5, 0.5, 0.25])
+            make_cells([-6, -6, 0.25], [6, 6, 2], [1.0, 1.0, 0.25])
             .flatten(0, -2)
             .to(self.device)
         )
@@ -120,8 +129,8 @@ class Formation(IsaacEnv):
         self.drone: MultirotorBase = drone_model(cfg=cfg)
 
         scene_utils.design_scene()
-
-        self.target_pos = torch.tensor([0.0, 0.0, 1.5], device=self.device)
+        target_pos_numpy = np.random.uniform(low=-2, high=2, size=3)
+        self.target_pos = torch.tensor([0.0, 0.0, 0.5], device=self.device)
         
         formation = self.cfg.task.formation
         if isinstance(formation, str):
@@ -139,6 +148,23 @@ class Formation(IsaacEnv):
         # self.formation_L = laplacian(self.formation)
 
         self.drone.spawn(translations=self.formation)
+        from omni.isaac.core.objects import DynamicSphere
+
+        DynamicSphere(
+        "/World/envs/env_0/goal",
+        translation=torch.tensor([0., 0., 1.5]),
+        color=torch.tensor([1.0, 0.2, 0.2]),
+        radius=0.3,
+        mass=0.1,
+        )
+        kit_utils.set_collision_properties(
+            "/World/envs/env_0/goal",
+            collision_enabled=True
+        )
+        kit_utils.set_rigid_body_properties(
+            "/World/envs/env_0/goal",
+            disable_gravity=True
+        )
         return ["/World/defaultGroundPlane"]
 
     def _set_specs(self):
@@ -207,7 +233,13 @@ class Formation(IsaacEnv):
         self.drone.set_world_poses(pos, rot, env_ids)
         self.drone.set_velocities(vel, env_ids)
 
-        self.last_cost_h[env_ids] = torch.vmap(cost_formation_hausdorff)(
+        if pos.dim()==3:
+            temp = torch.vmap(cost_formation_hausdorff)(
+            pos.reshape(pos.shape[0],1,12), desired_p=self.formation
+            )
+            self.last_cost_h[env_ids] = temp.squeeze(1)
+        else:
+            self.last_cost_h[env_ids] = torch.vmap(cost_formation_hausdorff)(
             pos, desired_p=self.formation
         )
         # self.last_cost_l[env_ids] = vmap(cost_formation_laplacian)(
@@ -281,7 +313,7 @@ class Formation(IsaacEnv):
             reward_separation * (
                 reward_formation 
                 + reward_formation * (reward_pos + reward_heading)
-                + 0.4 * reward_pos
+                + 0.4 * reward_pos * reward_formation
             )
         )
 
@@ -346,12 +378,12 @@ def laplacian(p: torch.Tensor, normalize=False):
 
 @torch.vmap
 def cost_formation_hausdorff(p: torch.Tensor, desired_p: torch.Tensor) -> torch.Tensor:
+    if p.dim()==1:
+        p = p.reshape(4,3)
     p = p - p.mean(-2, keepdim=True)
     desired_p = desired_p - desired_p.mean(-2, keepdim=True)
     cost = torch.max(directed_hausdorff(p, desired_p), directed_hausdorff(desired_p, p))
     return cost.unsqueeze(-1)
-
-
 def directed_hausdorff(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     """
     p: (*, n, dim)

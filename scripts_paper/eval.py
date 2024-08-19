@@ -28,7 +28,8 @@ algos = {
 }
 
 transport_checkpoint = None
-formation_checkpoint = None
+formation_checkpoint = "./formation_checkpoint.pt"
+# "./formation_checkpoint.pt"
 
 @hydra.main(version_base=None, config_path=CONFIG_PATH, config_name="train")
 def main(cfg):

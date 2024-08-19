@@ -7,8 +7,10 @@ import torch
 class Payload:
     target_pos: torch.Tensor
     target_rot: torch.Tensor
-
+@dataclass
 class ConnectedPayload(Payload):
+    payload_pos: torch.Tensor
+    payload_rot: torch.Tensor
     joint_pos: torch.Tensor
     joint_vel: torch.Tensor
 
