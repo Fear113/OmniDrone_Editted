@@ -14,6 +14,8 @@ from omni_drones.learning import (
     TDMPCPolicy,
 )
 
+import imageio
+
 algos = {
     "mappo": MAPPOPolicy,
     "happo": HAPPOPolicy,
@@ -47,18 +49,50 @@ def main(cfg):
     if formation_checkpoint is not None:
         formation_policy.load_state_dict(torch.load(formation_checkpoint))
 
-    state = env.reset()
-    while True:
-        while not state['done']:
-            state = env.step(transport_policy(state, deterministic=True))['next']
+    def record_frame(frames, *args, **kwargs):
+        frame = env.render(mode="rgb_array")
+        frames.append(frame)
 
-        state_snapshot = env.snapshot_state()
+    frames = []
+    seed = 1
+    num_payloads = cfg.task.num_payloads_per_group
+
+    env.enable_render(True)
+    env.set_seed(seed)
+    state = env.reset()
+
+    for i in range(num_payloads):
+        # formation
+        while not state['done']:
+            state = env.step(formation_policy(state, deterministic=True))['next']
+            record_frame(frames)
+
+        with torch.no_grad():
+            state_snapshot = env.snapshot_state()
+
         simulation_app.context.close_stage()
         simulation_app.context.new_stage()
-        env = env_class(cfg, headless=cfg.headless, initial_state=state_snapshot)
+
+        env = env_class(cfg, headless=cfg.headless, initial_state=state_snapshot)   
         state = env.reset()
 
+        # transport
+        while not state['done']:
+            state = env.step(transport_policy(state, deterministic=True))['next']
+            record_frame(frames)
+
+        with torch.no_grad():
+            state_snapshot = env.snapshot_state()
+
+        simulation_app.context.close_stage()
+        simulation_app.context.new_stage()
+
+        env = env_class(cfg, headless=cfg.headless, initial_state=state_snapshot)  
+        state = env.reset()
+
+    if len(frames):
+        imageio.mimsave("result_video/video.mp4", frames, fps=0.5 / cfg.sim.dt)
+        print("completed the video")
 
 if __name__ == "__main__":
-    main()
     main()
