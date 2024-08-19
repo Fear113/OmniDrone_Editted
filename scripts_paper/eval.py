@@ -49,15 +49,19 @@ def main(cfg):
         formation_policy.load_state_dict(torch.load(formation_checkpoint))
 
     state = env.reset()
+    task = 0
     while True:
         while not state['done']:
-            # random_action = env.rand_action(state)
-            # state = env.step(random_action)['next']
-            state = env.step(transport_policy(state, deterministic=True))['next']
-
+            if task:
+                # state = env.step(transport_policy(state, deterministic=True))['next']
+                state = env.step(env.rand_action(state))['next']
+            else:
+                state = env.step(formation_policy(state, deterministic=True))['next']
+        task = not task
         state_snapshot = env.snapshot_state()
         simulation_app.context.close_stage()
         simulation_app.context.new_stage()
+        #simulation_context.reset()
         env = env_class(cfg, headless=cfg.headless, initial_state=state_snapshot)
         state = env.reset()
 
