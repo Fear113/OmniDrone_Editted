@@ -31,7 +31,6 @@ from omni_drones.utils.torch import cpos, off_diag, others, make_cells, euler_to
 from omni_drones.robots.drone import MultirotorBase
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torchrl.data import CompositeSpec, UnboundedContinuousTensorSpec, DiscreteTensorSpec
-import numpy as np
 
 targetposition = [0,0,0]
 
@@ -105,7 +104,7 @@ class Formation(IsaacEnv):
 
         # initial state distribution
         self.cells = (
-            make_cells([-6, -6, 0.25], [6, 6, 2], [1.0, 1.0, 0.25])
+            make_cells([-2, -2, 0.5], [2, 2, 2], [0.5, 0.5, 0.25])
             .flatten(0, -2)
             .to(self.device)
         )
@@ -129,7 +128,7 @@ class Formation(IsaacEnv):
         self.drone: MultirotorBase = drone_model(cfg=cfg)
 
         scene_utils.design_scene()
-        target_pos_numpy = np.random.uniform(low=-2, high=2, size=3)
+
         self.target_pos = torch.tensor([0.0, 0.0, 0.5], device=self.device)
         
         formation = self.cfg.task.formation
@@ -313,7 +312,7 @@ class Formation(IsaacEnv):
             reward_separation * (
                 reward_formation 
                 + reward_formation * (reward_pos + reward_heading)
-                + 0.4 * reward_pos * reward_formation
+                + 0.4 * reward_pos
             )
         )
 

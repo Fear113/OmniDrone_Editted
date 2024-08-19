@@ -7,15 +7,16 @@ defaults:
   # - /base/randomization_base@_here_
 
 env: 
-  num_envs: 1024
+  num_envs: 150
   max_episode_length: 600
+  env_spacing: 14
 
 drone_model: Hummingbird
 force_sensor: false
 time_encoding: true
 
 safe_distance: 0.4
-formation: hexagon # tetragon
+formation: squre #hexagon # tetragon
 
 flatten_state: false
 
