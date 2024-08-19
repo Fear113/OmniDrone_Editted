@@ -143,7 +143,7 @@ class Logistics(IsaacEnv):
     def make_payload_offset(self):
         payload_offset = []
         for i in range(self.num_payloads_per_group):
-            payload_position = [0, -2+i*2, 0]
+            payload_position = [0, -4+i*2, 0]
             payload_offset.append(payload_position)
         return torch.FloatTensor(payload_offset).to(device=self.device)
 
@@ -176,7 +176,7 @@ class Logistics(IsaacEnv):
             payloads = []
 
             for j in range(self.num_payloads_per_group):
-                payload_target_pos = self.group_offset[i] + torch.tensor([0., 2., j * 2], device=self.device)
+                payload_target_pos = self.group_offset[i] + torch.tensor([0., 2., j * 2 + 1], device=self.device)
                 payload_target_rot = torch.zeros(4, device=self.device)
                 # payload_pos = payload_pos_dist.sample() + self.group_offset[i]
                 payload_pos = payload_pos_dist.sample() + self.group_offset[i] + self.payload_offset[j]
@@ -201,8 +201,8 @@ class Logistics(IsaacEnv):
             # spawn drones
             if group.is_transporting:
                 group_cfg = TransportationCfg(num_drones=self.cfg.task.num_drones_per_group)
-                _group = TransportationGroup(drone=self.drone, cfg=group_cfg)
                 payload_position = group.payloads[group.target_payload_idx].payload_pos.clone().detach()
+                _group = TransportationGroup(drone=self.drone, cfg=group_cfg)
                 _group.spawn(translations=payload_position, enable_collision=True)
                 self.groups.append(_group)
             else:
@@ -232,7 +232,7 @@ class Logistics(IsaacEnv):
             self.groups[0].drone.set_velocities(vel, env_ids)
 
             payload = self.groups[0].payload_view
-            payload.set_masses(torch.as_tensor(0.5 * self.drone.MASS_0.sum(), device=self.device), env_ids)
+            payload.set_masses(torch.tensor([0.5 * self.drone.MASS_0.sum()], device=self.device), env_ids)
 
     def _set_specs(self):
         drone_state_dim = self.drone.state_spec.shape[0]
@@ -371,27 +371,19 @@ class Logistics(IsaacEnv):
             payload_state.append(t.expand(-1, self.time_encoding_dim))
         payload_state = torch.cat(payload_state, dim=-1).unsqueeze(1)
 
-
-
+        obs = TensorDict({}, [self.num_envs, self.drone.n])
         identity = torch.eye(self.drone.n, device=self.device).expand(self.num_envs, -1, -1)
-        obs_self = torch.cat(
+        obs["obs_self"] = torch.cat(
             [-payload_drone_rpos, drone_states[..., 3:], identity], dim=-1
-        ).unsqueeze(2)
-        obs_others = torch.cat(
+        ).unsqueeze(2)  # [..., 1, state_dim]
+        obs["obs_others"] = torch.cat(
             [drone_rpos, drone_pdist, torch.vmap(others)(drone_states[..., 3:13])], dim=-1
         )  # [..., n-1, state_dim + 1]
-        obs_payload = payload_state.expand(-1, self.drone.n, -1).unsqueeze(2)  # [..., 1, 22]
-
-        obs = torch.cat(
-            [obs_self.reshape(self.num_envs, self.drone.n, -1),
-             obs_others.reshape(self.num_envs, self.drone.n, -1),
-             obs_payload.reshape(self.num_envs, self.drone.n, -1)],
-            dim=-1
-        )
+        obs["obs_payload"] = payload_state.expand(-1, self.drone.n, -1).unsqueeze(2)  # [..., 1, 22]
 
         state = TensorDict({}, self.num_envs)
         state["payload"] = payload_state  # [..., 1, 22]
-        state["drones"] = obs_self.squeeze(2)  # [..., n, state_dim]
+        state["drones"] = obs["obs_self"].squeeze(2)  # [..., n, state_dim]
 
         return TensorDict({
             "agents": {
@@ -448,7 +440,7 @@ class Logistics(IsaacEnv):
 
         script_utils.setRigidBody(payload, "convexHull", False)
         UsdPhysics.MassAPI.Apply(payload)
-        payload.GetAttribute("physics:mass").Set(2.0) # TODO: adjust mass
+        payload.GetAttribute("physics:mass").Set(2.0)
         payload.GetAttribute("physics:collisionEnabled").Set(True)
 
         kit_utils.set_rigid_body_properties(
