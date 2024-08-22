@@ -59,7 +59,6 @@ class Logistics(IsaacEnv):
         self.num_payloads_per_group = cfg.task.num_payloads_per_group
         self.num_drones_per_group = cfg.task.num_drones_per_group
         self.groups = []
-        self.moved_list = [False] * cfg.task.num_payloads_per_group
         drone_formation = torch.tensor([
             [0.75, 0.5, 1.0],
             [0.75, -0.5, 1.0],
@@ -68,6 +67,7 @@ class Logistics(IsaacEnv):
         ], device=self.device)
         self.formation = drone_formation
         self.group_offset = self.make_group_offset()
+        self.payload_groups = []
         self.payload_offset = self.make_payload_offset()
         self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
         self.done_group = None
@@ -104,7 +104,7 @@ class Logistics(IsaacEnv):
                         _payload = DisconnectedPayload(
                             payload.target_pos,
                             payload.target_rot,
-                            current_payload_pos.squeeze(axis=0), ### current payload pos로 대체되어야 한다.  self.groups[0].payload_view
+                            current_payload_pos.squeeze(axis=0),
                             current_payload_rot.squeeze(axis=0)
                         )
                         payloads.append(_payload)
