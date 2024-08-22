@@ -48,7 +48,7 @@ from tensordict.tensordict import TensorDict, TensorDictBase
 from torchrl.data import CompositeSpec, UnboundedContinuousTensorSpec, DiscreteTensorSpec
 from pxr import Gf, PhysxSchema, UsdGeom, UsdPhysics
 from omni.kit.commands import execute
-
+from omni.usd import get_world_transform_matrix
 
 class Logistics(IsaacEnv):
     def __init__(self, cfg, headless, initial_state: Optional[StateSnapshot] = None):
@@ -59,6 +59,14 @@ class Logistics(IsaacEnv):
         self.num_payloads_per_group = cfg.task.num_payloads_per_group
         self.num_drones_per_group = cfg.task.num_drones_per_group
         self.groups = []
+        self.moved_list = [False] * cfg.task.num_payloads_per_group
+        drone_formation = torch.tensor([
+            [0.75, 0.5, 1.0],
+            [0.75, -0.5, 1.0],
+            [-0.75, -0.5, 1.0],
+            [-0.75, 0.5, 1.0]
+        ], device=self.device)
+        self.formation = drone_formation
         self.group_offset = self.make_group_offset()
         self.payload_offset = self.make_payload_offset()
         self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
@@ -81,39 +89,58 @@ class Logistics(IsaacEnv):
         for i, group in enumerate(self.initial_state.groups):
             drone_range = range(i * self.num_drones_per_group,
                                 i * self.num_drones_per_group + self.num_drones_per_group)
-            drone_pos = drone_state[..., drone_range, 0:3]
-            drone_rot = drone_state[..., drone_range, 3:7]
-            drone_vel = drone_state[..., drone_range, 7:13]
+            drone_pos = drone_state[..., drone_range, 0:3].squeeze(axis=0)
+            drone_rot = drone_state[..., drone_range, 3:7].squeeze(axis=0)
+            drone_vel = drone_state[..., drone_range, 7:13].squeeze(axis=0)
 
             if self.done_group == i:
                 is_transporting = not group.is_transporting
-                if group.is_transporting:
-                    target_payload_idx = group.target_payload_idx + 1 if group.target_payload_idx < self.num_payloads_per_group else None
-                else:
-                    target_payload_idx = group.target_payload_idx
-
+                target_payload_idx = group.target_payload_idx
                 payloads = []
                 for j, payload in enumerate(group.payloads):
                     if target_payload_idx == j and group.is_transporting:
+                        tempPayload = self.groups[0].payload_view
+                        current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
                         _payload = DisconnectedPayload(
                             payload.target_pos,
                             payload.target_rot,
-                            payload.payload_pos,
-                            payload.payload_rot
+                            current_payload_pos.squeeze(axis=0), ### current payload pos로 대체되어야 한다.  self.groups[0].payload_view
+                            current_payload_rot.squeeze(axis=0)
                         )
                         payloads.append(_payload)
                     elif target_payload_idx == j and not group.is_transporting:
+                        world_transform_matrix = get_world_transform_matrix(self.payload_groups[j])
+                        temp_pos = world_transform_matrix.ExtractTranslation()
+                        temp_quatd = world_transform_matrix.ExtractRotationQuat()
+                        # quatd = self.payload_groups[j].GetAttribute("xformOp:orient").Get()
+                        orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
                         _payload = ConnectedPayload(
                             payload.target_pos,
                             payload.target_rot,
-                            payload.payload_pos,
-                            payload.payload_rot,
+                            torch.FloatTensor(temp_pos).to(device=self.device),
+                            torch.FloatTensor(orient).to(device=self.device),
                             torch.zeros((1, 32)),
                             torch.zeros((1, 32)),
                         )
                         payloads.append(_payload)
                     else:
-                        payloads.append(payload)
+                        world_transform_matrix = get_world_transform_matrix(self.payload_groups[j])
+                        temp_pos = world_transform_matrix.ExtractTranslation()
+                        if j < group.target_payload_idx:
+                            temp_pos[2] = (j+1)*0.2
+                        temp_quatd = world_transform_matrix.ExtractRotationQuat()
+                        orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
+                        _payload = DisconnectedPayload(
+                            payload.target_pos,
+                            payload.target_rot,
+                            torch.FloatTensor(temp_pos).to(device=self.device),
+                            torch.FloatTensor(orient).to(device=self.device)
+                        )
+                        payloads.append(_payload)
+                if group.is_transporting:
+                    target_payload_idx = group.target_payload_idx + 1 if group.target_payload_idx < self.num_payloads_per_group -1 else group.target_payload_idx
+                # else:
+                #     target_payload_idx = group.target_payload_idx
             else:
                 is_transporting = group.is_transporting
                 target_payload_idx = group.target_payload_idx
@@ -148,14 +175,6 @@ class Logistics(IsaacEnv):
         return torch.FloatTensor(payload_offset).to(device=self.device)
 
     def make_initial_state(self):
-        drone_formation = torch.tensor([
-            [1, 1, 1.5],
-            [1, -1, 1.5],
-            [-1, 1, 1.5],
-            [-1, -1, 1.5]
-        ], device=self.device)
-        self.formation = drone_formation
-
         payload_pos_dist = D.Uniform(
             torch.tensor([-1., -1., 0.25], device=self.device),
             torch.tensor([1., 1., 0.25], device=self.device)
@@ -167,7 +186,7 @@ class Logistics(IsaacEnv):
 
         groups = []
         for i in range(self.num_groups):
-            drone_pos = drone_formation + self.group_offset[i]
+            drone_pos = self.formation + self.group_offset[i]
             drone_rot = torch.zeros((self.num_drones_per_group,4), device=self.device)
             drone_rot[:,0] = 1
             drone_vel = torch.zeros((self.num_drones_per_group,6), device=self.device)
@@ -176,8 +195,9 @@ class Logistics(IsaacEnv):
             payloads = []
 
             for j in range(self.num_payloads_per_group):
-                payload_target_pos = self.group_offset[i] + torch.tensor([0., 2., j * 2 + 1], device=self.device)
+                payload_target_pos = self.group_offset[i] + torch.tensor([0., 3., j * 0.5 + 1], device=self.device)
                 payload_target_rot = torch.zeros(4, device=self.device)
+                payload_target_rot[0] = 1
                 # payload_pos = payload_pos_dist.sample() + self.group_offset[i]
                 payload_pos = payload_pos_dist.sample() + self.group_offset[i] + self.payload_offset[j]
                 payload_rot = euler_to_quaternion(payload_rpy_dist.sample())
@@ -215,7 +235,11 @@ class Logistics(IsaacEnv):
             # spawn payload
             for j, payload in enumerate(group.payloads):
                 if isinstance(payload, DisconnectedPayload):
-                    self.create_payload(payload.payload_pos, f"{group_prim_path}/payload_{j}")
+                    temp_payload = self.create_payload(payload.payload_pos, f"{group_prim_path}/payload_{j}", rot = payload.payload_rot) #
+                    self.payload_groups.append(temp_payload)
+                else:
+                    self.payload_groups.append(None)
+
 
     def _reset_idx(self, env_ids: torch.Tensor):
         # TODO: extend to multiple groups
@@ -299,7 +323,7 @@ class Logistics(IsaacEnv):
                 pos = self.drone.pos
                 payload = group.payloads[group.target_payload_idx]
                 target_pos = payload.payload_pos.clone().detach()
-                target_pos[2] +=2
+                target_pos[2] +=1
                 self.root_states[..., :3] = target_pos - pos
 
                 obs_self = [self.root_states]
@@ -395,11 +419,28 @@ class Logistics(IsaacEnv):
     def _compute_reward_and_done(self):
         for i, group in enumerate(self.initial_state.groups):
             if group.is_transporting:
+                # Changes for stacking - 0822
+                payload = self.groups[0].payload_view
+                payload_target_heading = torch.zeros(1, 3, device=self.device)
+
+                payload_pos, payload_rot = self.get_env_poses(payload.get_world_poses())
+                payload_heading: torch.Tensor = quat_axis(payload_rot, axis=0)
+
+                payload = group.payloads[group.target_payload_idx]
+
+
+                target_payload_rpose = torch.cat([
+                payload.target_pos - payload_pos,
+                payload_target_heading - payload_heading], dim=-1)
+
+                p_distance = torch.norm(target_payload_rpose, dim=-1, keepdim=True)
+
                 payload = group.payloads[group.target_payload_idx]
                 pos = self.drone.pos
                 distance = torch.norm(pos.mean(-2, keepdim=True) - payload.target_pos, dim=-1)
                 truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1)
-                if distance < 1:
+
+                if p_distance < 1:
                     self.count[i] += 1
                 terminated = torch.tensor([[(self.count[i] > 49)]], device=self.device)
                 reward = torch.FloatTensor([[0]]).to(device=self.device)
@@ -408,7 +449,7 @@ class Logistics(IsaacEnv):
                 payload = group.payloads[group.target_payload_idx]
                 pos = self.drone.pos
                 target_pos = payload.payload_pos.clone().detach()
-                target_pos[2] +=2
+                target_pos[2] +=1
                 distance = torch.norm(pos.mean(-2, keepdim=True) - target_pos, dim=-1)
                 reward = torch.FloatTensor([[0]]).to(device=self.device)
                 truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1)
@@ -430,11 +471,12 @@ class Logistics(IsaacEnv):
                 self.batch_size,
             )
 
-    def create_payload(self, pos, prim_path):
+    def create_payload(self, pos, prim_path, rot=None):
         payload = prim_utils.create_prim(
             prim_path=prim_path,
             prim_type="Cube",
             position=pos,
+            orientation=rot,
             scale=(0.75, 0.5, 0.2),
         )
 
@@ -448,4 +490,4 @@ class Logistics(IsaacEnv):
             angular_damping=0.1,
             linear_damping=0.1
         )
-
+        return payload
