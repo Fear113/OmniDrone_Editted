@@ -48,10 +48,10 @@ def main(cfg):
     simulation_app = init_simulation_app(cfg)
 
     from omni_drones.envs.isaac_env import IsaacEnv
-    from omni_drones.envs.logistics.utils import StateSnapshot
+    from omni_drones.envs.logistics.state_snapshot import StateSnapshot
 
     def get_env(name, config_path, headless, initial_state: Optional[StateSnapshot] = None):
-        cfg = hydra.compose(config_name="train", overrides=[f"task={config_path}"])
+        cfg = hydra.compose(config_name="train", overrides=[f"task={config_path}", "task.env.num_envs=1"])
         OmegaConf.resolve(cfg)
         OmegaConf.set_struct(cfg, False)
 
@@ -68,17 +68,18 @@ def main(cfg):
         env = TransformedEnv(env, transforms).eval()
 
         env.set_seed(cfg.seed)
+        env.reset()
 
         return env, transforms
 
-    transport_env, transform = get_env(name='TransportHover', config_path='Transport/TransportHover', headless=True)
+    transport_env, transport_transform = get_env(name='TransportHover', config_path='Transport/TransportHover', headless=True)
     transport_policy = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=transport_env.agent_spec["drone"],
                                                     device="cuda")
     transport_policy.load_state_dict(torch.load(transport_checkpoint))
     simulation_app.context.close_stage()
     simulation_app.context.new_stage()
 
-    formation_env, _ = get_env(name='Formation', config_path='Formation', headless=True)
+    formation_env, formation_transform = get_env(name='Formation', config_path='Formation', headless=True)
     formation_policy = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=formation_env.agent_spec["drone"],
                                                     device="cuda")
     formation_policy.load_state_dict(torch.load(formation_checkpoint))
@@ -89,45 +90,40 @@ def main(cfg):
 
     frames = []
     seed = 1
-    num_payloads = cfg.task.num_payloads_per_group
 
     env.enable_render(True)
     env.set_seed(seed)
-    state = env.reset()
+    td = env.reset()
 
-    for i in range(num_payloads):
-        # formation
-        while not state['done']:
-            state = env.step(formation_policy(state, deterministic=True))['next']
+    state_snapshot = env.snapshot_state()
+    max_tasks = 10
+
+    for i in range(max_tasks):
+        while not td['done']:
+            actions = []
+
+            for j, group in enumerate(state_snapshot.group_snapshots):
+                if group.is_transporting:
+                    transformed_state = transport_transform._step(env.get_transport_state(j), env.get_transport_state(j))
+                    actions.append(transport_policy(transformed_state, deterministic=True)['agents']['action'])
+                else:
+                    transformed_state = formation_transform._step(env.get_formation_state(j), env.get_formation_state(j))
+                    actions.append(formation_policy(transformed_state, deterministic=True)['agents']['action'])
+
+            td['agents']['action'] = torch.cat(actions,dim=1)
+            td = env.step(td)['next']
             record_frame(frames, env)
 
         with torch.no_grad():
             state_snapshot = env.snapshot_state()
-
         simulation_app.context.close_stage()
         simulation_app.context.new_stage()
 
         env, _ = get_env(name='Logistics', config_path='Logistics', headless=cfg.headless, initial_state=state_snapshot)
-        state = env.reset()
-
-        # transport
-        while not state['done']:
-            transport_state = env.get_transport_state()
-            transport_state = transform._step(transport_state, transport_state)
-            state = env.step(transport_policy(transport_state))['next']
-            record_frame(frames, env)
-
-        with torch.no_grad():
-            state_snapshot = env.snapshot_state()
-
-        simulation_app.context.close_stage()
-        simulation_app.context.new_stage()
-
-        env, _ = get_env(name='Logistics', config_path='Logistics', headless=cfg.headless, initial_state=state_snapshot)
-        state = env.reset()
+        td = env.reset()
 
     if len(frames):
-        imageio.mimsave("result_video/video.mp4", frames, fps=0.5 / cfg.sim.dt)
+        imageio.mimsave("video.mp4", frames, fps=0.5 / cfg.sim.dt)
         print("completed the video")
 
 
