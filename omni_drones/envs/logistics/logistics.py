@@ -250,6 +250,10 @@ class Logistics(IsaacEnv):
             if group_snapshot.is_transporting:
                 group_cfg = TransportationCfg(num_drones=self.cfg.task.num_drones_per_group)
                 payload_position = group_snapshot.payloads[group_snapshot.target_payload_idx].payload_pos.clone().detach()
+                drone_orientations = group_snapshot.drone_rot.clone().detach()
+                drone_poses = group_snapshot.drone_pos.clone().detach()
+                # drone_translation = drone_poses - payload_position
+                # drone_transition[:,2] = 0
                 transport = TransportationGroup(drone=drones, cfg=group_cfg)
                 transport.spawn(translations=payload_position, prim_paths=[group_prim_path], enable_collision=True)
             else:
@@ -276,19 +280,20 @@ class Logistics(IsaacEnv):
             rot = group_snapshot.drone_rot.clone().detach()
             vel = group_snapshot.drone_vel.clone().detach()
 
-            if group.transport is not None:
+            if group.transport is not None: #########여기서 드론 rot과 vel을 설정해야한다는 듯?
                 payload = group_snapshot.target_payload()
                 group.transport._reset_idx(env_ids)
                 group.transport.set_world_poses(payload.payload_pos, payload.payload_rot, env_ids)
                 group.transport.set_velocities(payload.payload_vel, env_ids)
                 group.transport.set_joint_positions(payload.joint_pos, env_ids)
                 group.transport.set_joint_velocities(payload.joint_vel, env_ids)
-                group.transport.payload_view.set_masses(torch.tensor([0.5 * group.drones.MASS_0.sum()], device=self.device), env_ids)
+                group.transport.payload_view.set_masses(torch.tensor([2.0], device=self.device), env_ids)
+                group.transport.drone.set_world_poses(pos, rot, env_ids)
+                group.transport.drone.set_velocities(vel, env_ids)
             else:
                 group.drones._reset_idx(env_ids)
                 group.drones.set_world_poses(pos, rot, env_ids)
-                group.drones.set_velocities(vel, env_ids
-)
+                group.drones.set_velocities(vel, env_ids)
 
     def _set_specs(self):
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]

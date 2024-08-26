@@ -73,6 +73,7 @@ class TransportationGroup(RobotBase):
         prim_paths: Sequence[str] = None,
         enable_collision: bool = False,
         drone_translations_origin = None,
+        orientations = None
     ):
 
         translations = torch.atleast_2d(
@@ -115,7 +116,7 @@ class TransportationGroup(RobotBase):
                 linear_damping=0.1
             )
             if not(drone_translations_origin is None):
-                drone_translations = drone_translations_origin[0]
+                drone_translations = drone_translations_origin
             else:
                 if self.num_drones == 4:
                     drone_translations = torch.tensor([
@@ -135,10 +136,17 @@ class TransportationGroup(RobotBase):
                     ])
 
             for i in range(self.num_drones):
-                drone_prim = self.drone.spawn(
-                    translations=drone_translations[i],
-                    prim_paths=[f"{prim_path}/{self.drone.name.lower()}_{i}"],
-                )[0]
+                if orientations is not None:
+                    drone_prim = self.drone.spawn(
+                        translations=drone_translations[i],
+                        prim_paths=[f"{prim_path}/{self.drone.name.lower()}_{i}"],
+                        orientations=[orientations[i]]
+                    )[0]
+                else:
+                    drone_prim = self.drone.spawn(
+                        translations=drone_translations[i],
+                        prim_paths=[f"{prim_path}/{self.drone.name.lower()}_{i}"]
+                    )[0]
                 execute(
                     "UnapplyAPISchema",
                     api=UsdPhysics.ArticulationRootAPI,
