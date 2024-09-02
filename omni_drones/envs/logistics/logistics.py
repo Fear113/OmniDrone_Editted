@@ -75,6 +75,7 @@ class Logistics(IsaacEnv):
             [-0.75, 0.5, 1.0]
         ], device=self.device)
         self.formation = drone_formation
+        self.group_interval = None
         self.group_offset = self.make_group_offset()
         self.payload_offset = self.make_payload_offset()
         self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
@@ -90,6 +91,48 @@ class Logistics(IsaacEnv):
         self.alpha = 0.8
         self.count = [0 for _ in range(self.num_groups)]
         self.world = World()
+
+        self.collison_safe_distance = 4.0
+        self.group_idx_for_collison_avoidance = []
+        self.temp_formation_target_pos = None
+        self.temp_transport_target_pos = None
+
+    def get_group_center_point(self):
+        group0_pos = self.groups[0].drones.get_state()[..., 0:3]
+        group1_pos = self.groups[1].drones.get_state()[..., 0:3]
+        group0_pos, group1_pos = group0_pos.squeeze(), group1_pos.squeeze()
+        group0_center, group1_center = group0_pos.mean(dim=0), group1_pos.mean(dim=0)
+        return group0_center, group1_center
+
+    def rulebased_collison_avoidance(self):
+        group0_center, group1_center = self.get_group_center_point()
+        center_distance = torch.sqrt(torch.sum((group0_center - group1_center) ** 2) + 1e-5).item()
+        if center_distance <= self.collison_safe_distance:
+            if len(self.group_idx_for_collison_avoidance) == 0:
+                self.group_idx_for_collison_avoidance = np.random.choice([0, 1], 1).tolist()
+            is_transporting = self.snapshot_state().group_snapshots[self.group_idx_for_collison_avoidance[0]].is_transporting
+            if is_transporting:
+                self.temp_formation_target_pos = None
+                # payloads = self.snapshot_state().group_snapshots[self.group_idx_for_collison_avoidance[0]].payloads
+                # for payload in payloads:
+                #     if isinstance(payload, ConnectedPayload):
+                #         if self.temp_transport_target_pos is None:
+                #             self.temp_transport_target_pos = payload.payload_pos.squeeze().clone().detach()
+                if self.temp_transport_target_pos is None:
+                    self.temp_transport_target_pos = [group0_center, group1_center][self.group_idx_for_collison_avoidance[0]].clone().detach()
+                    self.temp_transport_target_pos[2] = self.temp_transport_target_pos[2] - 1
+            else:
+                self.temp_transport_target_pos = None
+                if self.temp_formation_target_pos is None:
+                    self.temp_formation_target_pos = [group0_center, group1_center][self.group_idx_for_collison_avoidance[0]].clone().detach()
+        else:
+            self.group_idx_for_collison_avoidance = []
+            self.temp_formation_target_pos = None
+            self.temp_transport_target_pos = None
+
+
+
+
 
     def snapshot_state(self):
         group_snapshots = []
@@ -189,9 +232,9 @@ class Logistics(IsaacEnv):
         return StateSnapshot(group_snapshots)
 
     def make_group_offset(self):
-        group_interval = 5
+        self.group_interval = 5
         group_offset = torch.zeros(self.num_groups, 3, device=self.device)
-        group_offset[:, 0] = torch.arange(start=0, end=-(group_interval * self.num_groups), step=-group_interval,
+        group_offset[:, 0] = torch.arange(start=0, end=-(self.group_interval * self.num_groups), step=-self.group_interval,
                                           device=self.device)
 
         return group_offset
@@ -225,7 +268,8 @@ class Logistics(IsaacEnv):
             payloads = []
 
             for j in range(self.num_payloads_per_group):
-                payload_target_pos = self.group_offset[i] + torch.tensor([0., 3., j * 0.5 + 1], device=self.device)
+                payload_target_pos = - self.group_offset[i] + torch.tensor([-self.group_interval, 3., j * 0.5 + 1], device=self.device)
+                # payload_target_pos = self.group_offset[i] + torch.tensor([0., 3., j * 0.5 + 1], device=self.device)
                 payload_target_rot = torch.zeros(4, device=self.device)
                 payload_target_rot[0] = 1
                 payload_pos = payload_pos_dist.sample() + self.group_offset[i] + self.payload_offset[j]
@@ -400,8 +444,12 @@ class Logistics(IsaacEnv):
         root_states = self.groups[group_idx].drones.get_state()
         pos = self.groups[group_idx].drones.pos
         payload = group_snapshot.payloads[group_snapshot.target_payload_idx]
-        target_pos = payload.payload_pos.clone().detach()
-        target_pos[2] += 1
+        if (len(self.group_idx_for_collison_avoidance) > 0) and group_idx == self.group_idx_for_collison_avoidance[0]:
+            target_pos = self.temp_formation_target_pos  # get_group_center_point()[self.group_idx_for_collison_avoidance[0]].clone().detach()
+        else:
+            target_pos = payload.payload_pos.clone().detach()
+            target_pos[2] += 1
+
         root_states[..., :3] = target_pos - pos
 
         obs_self = [root_states]
@@ -451,7 +499,12 @@ class Logistics(IsaacEnv):
         drone_pdist = torch.norm(drone_rpos, dim=-1, keepdim=True)
         payload_drone_rpos = payload_pos.unsqueeze(1) - drone_pos
 
-        payload_target_pos = group_snapshot.payloads[group_snapshot.target_payload_idx].target_pos
+        if (len(self.group_idx_for_collison_avoidance) > 0) and group_idx == self.group_idx_for_collison_avoidance[0]:
+            payload_target_pos = self.temp_transport_target_pos
+            print("self.temp_transport_target_pos", self.temp_transport_target_pos.shape)
+        else:
+            payload_target_pos = group_snapshot.payloads[group_snapshot.target_payload_idx].target_pos
+            print("payload_target_pos", payload_target_pos.shape)
         payload_target_heading = torch.zeros(1, 3, device=self.device)
 
         target_payload_rpose = torch.cat([
