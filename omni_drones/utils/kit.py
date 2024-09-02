@@ -103,7 +103,7 @@ def create_ground_plane(
     ambient_light = kwargs.get("ambient_light", True)
     if ambient_light:
         # check isaacsim version to determine the attribute name
-        attributes = {"intensity": 600.0}
+        attributes = {"intensity": 600.0} #"color":(0.8,0.8,0.8)
         isaacsim_version = get_version()
         if int(isaacsim_version[2]) > 2022:
             attributes = {f"inputs:{k}": v for k, v in attributes.items()}
