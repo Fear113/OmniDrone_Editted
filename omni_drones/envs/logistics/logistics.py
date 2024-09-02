@@ -273,8 +273,6 @@ class Logistics(IsaacEnv):
             if group_snapshot.is_transporting:
                 group_cfg = TransportationCfg(num_drones=self.cfg.task.num_drones_per_group)
                 payload_position = group_snapshot.payloads[group_snapshot.target_payload_idx].payload_pos.clone().detach()
-                drone_orientations = group_snapshot.drone_rot.clone().detach()
-                drone_poses = group_snapshot.drone_pos.clone().detach()
                 # drone_translation = drone_poses - payload_position
                 # drone_transition[:,2] = 0
                 transport = TransportationGroup(drone=drones, cfg=group_cfg)

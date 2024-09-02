@@ -115,7 +115,7 @@ class TransportationGroup(RobotBase):
                 angular_damping=0.1,
                 linear_damping=0.1
             )
-            if not(drone_translations_origin is None):
+            if drone_translations_origin is not None:
                 drone_translations = drone_translations_origin
             else:
                 if self.num_drones == 4:
