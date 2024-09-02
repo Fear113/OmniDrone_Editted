@@ -49,6 +49,8 @@ from torchrl.data import CompositeSpec, UnboundedContinuousTensorSpec, DiscreteT
 from pxr import Gf, PhysxSchema, UsdGeom, UsdPhysics
 from omni.kit.commands import execute
 from omni.usd import get_world_transform_matrix
+from omni.isaac.core.objects import DynamicSphere
+from omni_drones.robots.robot import ASSET_PATH
 
 @dataclass
 class Group:
@@ -241,6 +243,27 @@ class Logistics(IsaacEnv):
         cfg = drone_model.cfg_cls(force_sensor=self.cfg.task.force_sensor)
         scene_utils.design_scene()
 
+        asset_path = ASSET_PATH + "/industry_usd/RackLarge/RackLarge.usd"
+        prim_utils.create_prim("/World/envs/RackLarge1", usd_path=asset_path, translation=(-9, -9, 0), scale=(0.01, 0.01, 0.01))
+
+        asset_path = ASSET_PATH + "/industry_usd/RackLarge/RackLarge.usd"
+        prim_utils.create_prim("/World/envs/RackLarge2", usd_path=asset_path, translation=(-5, -9, 0), scale=(0.01, 0.01, 0.01))
+
+        asset_path = ASSET_PATH + "/industry_usd/RackLarge/RackLarge.usd"
+        prim_utils.create_prim("/World/envs/RackLarge3", usd_path=asset_path, translation=(-1, -9, 0), scale=(0.01, 0.01, 0.01))
+
+        asset_path = ASSET_PATH + "/industry_usd/RackLarge/RackLarge.usd"
+        prim_utils.create_prim("/World/envs/RackLarge4", usd_path=asset_path, translation=(-9, -3, 0), scale=(0.01, 0.01, 0.01))
+
+        asset_path = ASSET_PATH + "/industry_usd/RackLarge/RackLarge.usd"
+        prim_utils.create_prim("/World/envs/RackLarge5", usd_path=asset_path, translation=(-9, 3, 0), scale=(0.01, 0.01, 0.01))
+
+        asset_path = ASSET_PATH + "/industry_usd/RackLarge/RackLarge.usd"
+        prim_utils.create_prim("/World/envs/RackLarge6", usd_path=asset_path, translation=(-9, 9, 0), scale=(0.01, 0.01, 0.01))
+
+        # asset_path = ASSET_PATH + "/industry_usd/Warehouse/Warehouse01.usd"
+        # prim_utils.create_prim("/World/envs/Warehouse", usd_path=asset_path, translation=(0, 0, 0), scale=(0.01, 0.01, 0.01))
+
         for i, group_snapshot in enumerate(self.initial_state.group_snapshots):
             drones = drone_model(cfg=cfg)
             transport = None
@@ -256,6 +279,21 @@ class Logistics(IsaacEnv):
                 # drone_transition[:,2] = 0
                 transport = TransportationGroup(drone=drones, cfg=group_cfg)
                 transport.spawn(translations=payload_position, prim_paths=[group_prim_path], enable_collision=True)
+                DynamicCuboid(
+                    "/World/envs/env_0/payloadTargetVis{}".format(i),
+                    position=group_snapshot.payloads[group_snapshot.target_payload_idx].target_pos.clone().detach(),
+                    scale=torch.tensor([0.75, 0.5, 0.2]),
+                    color=torch.tensor([0.8, 0.1, 0.1]),
+                    size=2.01,
+                )
+                kit_utils.set_collision_properties(
+                    "/World/envs/env_0/payloadTargetVis{}".format(i),
+                    collision_enabled=False
+                )
+                kit_utils.set_rigid_body_properties(
+                    "/World/envs/env_0/payloadTargetVis{}".format(i),
+                    disable_gravity=True
+                )
             else:
                 prim_utils.create_prim(group_prim_path)  # xform
                 drone_prim_paths = [f"{group_prim_path}/{drones.name.lower()}_{j}" for j in

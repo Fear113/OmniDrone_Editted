@@ -40,7 +40,7 @@ def design_scene():
         static_friction=0.5,
         dynamic_friction=0.5,
         restitution=0.8,
-        improve_patch_friction=True,
+        improve_patch_friction=True
     )
     prim_utils.create_prim(
         "/World/Light/GreySphere",
