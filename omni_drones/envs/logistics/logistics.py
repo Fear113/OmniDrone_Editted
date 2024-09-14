@@ -20,6 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 from dataclasses import dataclass
+import random
 
 import omni_drones.utils.kit as kit_utils
 import omni_drones.utils.scene as scene_utils
@@ -32,6 +33,7 @@ import numpy as np
 
 from omni_drones.envs.logistics import state_snapshot
 from omni_drones.envs.logistics.state_snapshot import StateSnapshot, ConnectedPayload, DisconnectedPayload, GroupSnapshot
+from omni_drones.utils.payload import Payload
 from omni_drones.views import RigidPrimView
 
 from omni.isaac.core import World
@@ -114,6 +116,8 @@ class Logistics(IsaacEnv):
                         tempPayload = self.groups[i].transport.payload_view
                         current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
                         _payload = DisconnectedPayload(
+                            payload.usd_path,
+                            payload.scale,
                             payload.target_pos,
                             payload.target_rot,
                             current_payload_pos.squeeze(axis=0),
@@ -126,6 +130,8 @@ class Logistics(IsaacEnv):
                         temp_quatd = world_transform_matrix.ExtractRotationQuat()
                         orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
                         _payload = ConnectedPayload(
+                            payload.usd_path,
+                            payload.scale,
                             payload.target_pos,
                             payload.target_rot,
                             torch.FloatTensor(temp_pos).to(device=self.device),
@@ -143,6 +149,8 @@ class Logistics(IsaacEnv):
                         temp_quatd = world_transform_matrix.ExtractRotationQuat()
                         orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
                         _payload = DisconnectedPayload(
+                            payload.usd_path,
+                            payload.scale,
                             payload.target_pos,
                             payload.target_rot,
                             torch.FloatTensor(temp_pos).to(device=self.device),
@@ -163,6 +171,8 @@ class Logistics(IsaacEnv):
                         joint_vel = self.groups[i].transport.get_joint_velocities(True)
 
                         payloads.append(ConnectedPayload(
+                            payload.usd_path,
+                            payload.scale,
                             payload.target_pos,
                             payload.target_rot,
                             pos.squeeze(axis=0),
@@ -225,12 +235,15 @@ class Logistics(IsaacEnv):
             payloads = []
 
             for j in range(self.num_payloads_per_group):
+                payload = random.choice(list(Payload))
+                usd_path = payload.value.usd_path
+                scale = payload.value.scale
                 payload_target_pos = self.group_offset[i] + torch.tensor([0., 3., j * 0.5 + 1], device=self.device)
                 payload_target_rot = torch.zeros(4, device=self.device)
                 payload_target_rot[0] = 1
                 payload_pos = payload_pos_dist.sample() + self.group_offset[i] + self.payload_offset[j]
                 payload_rot = euler_to_quaternion(payload_rpy_dist.sample())
-                payloads.append(DisconnectedPayload(payload_target_pos, payload_target_rot, payload_pos, payload_rot))
+                payloads.append(DisconnectedPayload(usd_path, scale, payload_target_pos, payload_target_rot, payload_pos, payload_rot))
 
             groups.append(
                 GroupSnapshot(drone_pos, drone_rot, drone_vel, target_payload_idx, is_transporting, count, payloads)
@@ -272,11 +285,18 @@ class Logistics(IsaacEnv):
             # spawn drones
             if group_snapshot.is_transporting:
                 group_cfg = TransportationCfg(num_drones=self.cfg.task.num_drones_per_group)
-                payload_position = group_snapshot.payloads[group_snapshot.target_payload_idx].payload_pos.clone().detach()
+                payload = group_snapshot.payloads[group_snapshot.target_payload_idx]
+                payload_position = payload.payload_pos.clone().detach()
                 # drone_translation = drone_poses - payload_position
                 # drone_transition[:,2] = 0
                 transport = TransportationGroup(drone=drones, cfg=group_cfg)
-                transport.spawn(translations=payload_position, prim_paths=[group_prim_path], enable_collision=True)
+                transport.spawn(
+                    translations=payload_position,
+                    prim_paths=[group_prim_path],
+                    enable_collision=True,
+                    payload_usd=payload.usd_path,
+                    payload_scale=payload.scale,
+                )
                 DynamicCuboid(
                     "/World/envs/env_0/payloadTargetVis{}".format(i),
                     position=group_snapshot.payloads[group_snapshot.target_payload_idx].target_pos.clone().detach(),
@@ -301,8 +321,11 @@ class Logistics(IsaacEnv):
             # spawn payload
             for j, payload in enumerate(group_snapshot.payloads):
                 if isinstance(payload, DisconnectedPayload):
-                    temp_payload = self.create_payload(payload.payload_pos, f"{group_prim_path}/payload_{j}",
-                                                       rot=payload.payload_rot)  #
+                    temp_payload = self.create_payload(payload.payload_pos,
+                                                       f"{group_prim_path}/payload_{j}",
+                                                       payload.usd_path,
+                                                       payload.scale,
+                                                       payload.payload_rot)  #
                     payloads.append(temp_payload)
                 else:
                     payloads.append(None)
@@ -541,19 +564,19 @@ class Logistics(IsaacEnv):
             self.batch_size,
         )
 
-    def create_payload(self, pos, prim_path, rot=None):
+    def create_payload(self, pos, prim_path, usd_path, scale, rot):
         payload = prim_utils.create_prim(
             prim_path=prim_path,
-            prim_type="Cube",
+            usd_path=usd_path,
             position=pos,
             orientation=rot,
-            scale=(0.75, 0.5, 0.2),
+            scale=scale,
         )
 
         script_utils.setRigidBody(payload, "convexHull", False)
         UsdPhysics.MassAPI.Apply(payload)
         payload.GetAttribute("physics:mass").Set(2.0)
-        payload.GetAttribute("physics:collisionEnabled").Set(True)
+        payload.GetAttribute("physics:rigidBodyEnabled").Set(True)
 
         kit_utils.set_rigid_body_properties(
             payload.GetPath(),

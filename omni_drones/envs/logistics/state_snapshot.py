@@ -5,6 +5,8 @@ import torch
 
 @dataclass
 class Payload:
+    usd_path: str
+    scale: tuple[float, float, float]
     target_pos: torch.Tensor
     target_rot: torch.Tensor
 @dataclass
