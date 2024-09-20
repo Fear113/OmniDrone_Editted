@@ -99,6 +99,7 @@ def main(cfg):
     max_tasks = 10
 
     for i in range(max_tasks):
+        frame_count = 0
         while not td['done']:
             actions = []
 
@@ -114,7 +115,11 @@ def main(cfg):
 
             td['agents']['action'] = torch.cat(actions, dim=1)
             td = env.step(td)['next']
-            record_frame(frames, env)
+            
+            if frame_count >= 5:  
+                record_frame(frames, env)
+            
+            frame_count += 1  
 
         with torch.no_grad():
             state_snapshot = env.snapshot_state()
