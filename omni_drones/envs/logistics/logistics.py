@@ -181,10 +181,14 @@ class Logistics(IsaacEnv):
                     else:
                         world_transform_matrix = get_world_transform_matrix(self.groups[i].payloads[j])
                         temp_pos = world_transform_matrix.ExtractTranslation()
+                        temp_quatd = world_transform_matrix.ExtractRotationQuat()
+                        temp_quatd_imaginary = np.array(temp_quatd.imaginary)
                         if j < group_snapshot.target_payload_idx:
                             temp_pos[2] = (j + 1) * 0.2
-                        temp_quatd = world_transform_matrix.ExtractRotationQuat()
-                        orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
+                            temp_quatd_imaginary[0] = 0
+                            temp_quatd_imaginary[1] = 0  
+                            temp_quatd_imaginary[2] = 0
+                        orient = np.insert(temp_quatd_imaginary, 0, temp_quatd.real)
                         _payload = DisconnectedPayload(
                             payload.target_pos,
                             payload.target_rot,
