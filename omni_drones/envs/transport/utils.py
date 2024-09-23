@@ -37,6 +37,7 @@ import omni_drones.utils.scene as scene_utils
 
 from omni_drones.robots import RobotBase, RobotCfg
 from omni_drones.robots.drone import MultirotorBase
+from omni_drones.utils.payload import Payload
 from omni_drones.utils.torch import quat_axis
 from dataclasses import dataclass
 
@@ -73,7 +74,9 @@ class TransportationGroup(RobotBase):
         prim_paths: Sequence[str] = None,
         enable_collision: bool = False,
         drone_translations_origin = None,
-        orientations = None
+        orientations = None,
+        payload_usd = Payload.A1.value.usd_path,
+        payload_scale = Payload.A1.value.scale
     ):
 
         translations = torch.atleast_2d(
@@ -98,18 +101,19 @@ class TransportationGroup(RobotBase):
                 self.payload_scale = (0.75, 0.5, 0.2)
             elif self.num_drones == 6:
                 self.payload_scale = (1.0, 0.5, 0.2)
+
             payload = prim_utils.create_prim(
                 prim_path=f"{prim_path}/payload",
-                prim_type="Cube",
+                usd_path=payload_usd,
                 translation=(0.0, 0.0, -1.1),
-                scale=self.payload_scale,
+                scale=payload_scale,
             )
 
             script_utils.setRigidBody(payload, "convexHull", False)
             UsdPhysics.MassAPI.Apply(payload)
             payload.GetAttribute("physics:mass").Set(2.0)
-            payload.GetAttribute("physics:collisionEnabled").Set(enable_collision)
-            
+            payload.GetAttribute("physics:rigidBodyEnabled").Set(True)
+
             kit_utils.set_rigid_body_properties(
                 payload.GetPath(),
                 angular_damping=0.1,

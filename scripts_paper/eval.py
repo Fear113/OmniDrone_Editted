@@ -36,8 +36,8 @@ algos = {
     "tdmpc": TDMPCPolicy,
 }
 
-transport_checkpoint = "scripts_paper/transport_checkpoint.pt"
-formation_checkpoint = "scripts_paper/formation_checkpoint.pt"
+transport_checkpoint = "./transport_checkpoint.pt"
+formation_checkpoint = "./formation_checkpoint.pt"
 # "./formation_checkpoint.pt"
 
 @hydra.main(version_base=None, config_path=CONFIG_PATH, config_name="train")
@@ -110,9 +110,7 @@ def main(cfg):
                     transformed_state = formation_transform._step(env.get_formation_state(j), env.get_formation_state(j))
                     actions.append(formation_policy(transformed_state, deterministic=True)['agents']['action'])
 
-            env.rulebased_collison_avoidance()
-
-            td['agents']['action'] = torch.cat(actions, dim=1)
+            td['agents']['action'] = torch.cat(actions,dim=1)
             td = env.step(td)['next']
             record_frame(frames, env)
 
