@@ -54,12 +54,37 @@ REGULAR_TETRAGON = [
 REGULAR_SQUARE =[
     [1,1,1],
     [1,-1,1],
-    [-1,1,1],
     [-1,-1,1],
+    [-1,1,1],
+]
+
+DOUBLE = [
+    [1.5, 1, 1],
+    [1.5, -1, 1],
+    [-1.5, -1, 1],
+    [-1.5, 1, 1]
+]
+
+FLAT_S = [
+    [1.2, 0.7, 0.5],
+    [1.2, -0.7, 0.5],
+    [-1.2, -0.7, 0.5],
+    [-1.2, 0.7, 0.5]
+]
+
+FLAT_L = [
+    [1.5, 1.0, 0.5],
+    [1.5, -1.0, 0.5],
+    [-1.5, -1.0, 0.5],
+    [-1.5, 1.0, 0.5]
 ]
 
 FORMATIONS = {
+    # "squre": REGULAR_SQUARE,
     "squre": REGULAR_SQUARE,
+    "squre_2": DOUBLE,
+    "flat_s": FLAT_S,
+    "flat_l": FLAT_L,
     "hexagon": REGULAR_HEXAGON,
     "tetragon": REGULAR_TETRAGON,
 }
@@ -105,10 +130,11 @@ class Formation(IsaacEnv):
 
         # initial state distribution
         self.cells = (
-            make_cells([-6, -6, 0.25], [6, 6, 2], [1.0, 1.0, 0.25])
+            make_cells([-20, -20, 0.25], [20, 20, 2], [1.0, 1.0, 0.25])
             .flatten(0, -2)
             .to(self.device)
         )
+        # to default
         self.init_rpy_dist = D.Uniform(
             torch.tensor([-.2, -.2, 0.], device=self.device) * torch.pi,
             torch.tensor([0.2, 0.2, 2.], device=self.device) * torch.pi
