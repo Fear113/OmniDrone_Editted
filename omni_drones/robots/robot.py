@@ -126,7 +126,7 @@ class RobotBase(abc.ABC):
                 raise RuntimeError(f"Duplicate prim at {prim_path}.")
             prim = self._create_prim(prim_path, translation, orientation)
             # apply rigid body properties
-            kit_utils.set_nested_collision_properties(prim_path, collision_enabled=False) #######I add this. 
+            # kit_utils.set_nested_collision_properties(prim_path, collision_enabled=False) #######Use this code when collsion need to disabled.  
             kit_utils.set_nested_rigid_body_properties(
                 prim_path,
                 linear_damping=self.rigid_props.linear_damping,
