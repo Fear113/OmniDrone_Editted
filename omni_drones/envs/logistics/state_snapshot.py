@@ -9,6 +9,7 @@ class Payload:
     scale: tuple[float, float, float]
     target_pos: torch.Tensor
     target_rot: torch.Tensor
+    name: str
 @dataclass
 class ConnectedPayload(Payload):
     payload_pos: torch.Tensor

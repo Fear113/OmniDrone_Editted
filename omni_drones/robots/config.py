@@ -49,7 +49,7 @@ class RigidBodyPropertiesCfg:
 class ArticulationRootPropertiesCfg:
     """Properties to apply to articulation."""
 
-    enable_self_collisions: Optional[bool] = None
+    enable_self_collisions: Optional[bool] = False
     """Whether to enable or disable self-collisions."""
     solver_position_iteration_count: Optional[int] = 4
     """Solver position iteration counts for the body."""
