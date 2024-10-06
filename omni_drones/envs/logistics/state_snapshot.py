@@ -1,7 +1,17 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Optional
 
 import torch
+
+class Stage(Enum):
+    FORMATION=0
+    POST_FORMATION=1
+    PRE_TRANSPORT=2
+    TRANSPORT=3
+
+    def next(self):
+        return Stage((self.value + 1) % Stage.__len__())
 
 @dataclass
 class Payload:
@@ -29,7 +39,7 @@ class GroupSnapshot:
     drone_rot: torch.Tensor
     drone_vel: torch.Tensor
     target_payload_idx: Optional[int]
-    is_transporting: bool
+    stage: Stage
     count: int
     payloads: list[ConnectedPayload | DisconnectedPayload]
 

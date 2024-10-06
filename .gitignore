@@ -1,3 +1,6 @@
+omni_drones/robots/assets/industry_usd
+*.zip
+*.mp4
 .devcontainer
 .idea
 # Byte-compiled / optimized / DLL files

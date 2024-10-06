@@ -10,6 +10,7 @@ env:
   num_envs: 1
   max_episode_length: 600
 
+enable_background: False
 num_groups: 2
 num_payloads_per_group: 3
 num_drones_per_group: 4
