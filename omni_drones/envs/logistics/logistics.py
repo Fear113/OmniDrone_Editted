@@ -83,6 +83,7 @@ class Logistics(IsaacEnv):
         self.payload_offset = self.make_payload_offset()
         self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
         self.done_group = None
+        self.done_payloads = {payload.name:0 for payload in PayloadList}
 
         super().__init__(cfg, headless)
 
@@ -92,7 +93,7 @@ class Logistics(IsaacEnv):
             group.drones.initialize(f"/World/envs/env_*/Group_{i}/{self.groups[i].drones.name.lower()}_*")
 
         self.alpha = 0.8
-        self.count = [0 for _ in range(self.num_groups)]
+        self.count = [snapshot.count for snapshot in self.initial_state.group_snapshots]
         self.world = World()
 
     def snapshot_state(self):
@@ -122,10 +123,13 @@ class Logistics(IsaacEnv):
                             temp_pos = world_transform_matrix.ExtractTranslation()
                             temp_quatd = world_transform_matrix.ExtractRotationQuat()
                             orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
+                            target_pos = payload.target_pos.clone()
+                            target_pos[2] = self.done_payloads[payload.name] * 0.5 + 1
+
                             _payload = ConnectedPayload(
                                 payload.usd_path,
                                 payload.scale,
-                                payload.target_pos,
+                                target_pos,
                                 payload.target_rot,
                                 payload.name,
                                 torch.FloatTensor(temp_pos).to(device=self.device),
@@ -154,6 +158,7 @@ class Logistics(IsaacEnv):
                                 joint_vel.squeeze(axis=0)
                             ))
                         elif group_snapshot.stage == Stage.TRANSPORT:
+                            self.done_payloads[payload.name] += 1
                             tempPayload = self.groups[i].transport.payload_view
                             current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
                             _payload = DisconnectedPayload(
@@ -243,7 +248,7 @@ class Logistics(IsaacEnv):
         return StateSnapshot(group_snapshots)
 
     def make_group_offset(self):
-        group_interval = 5
+        group_interval = 7
         group_offset = torch.zeros(self.num_groups, 3, device=self.device)
         group_offset[:, 0] = torch.arange(start=0, end=-(group_interval * self.num_groups), step=-group_interval,
                                           device=self.device)
@@ -289,7 +294,7 @@ class Logistics(IsaacEnv):
                     payload = random.choice(list(PayloadList))
                 usd_path = payload.value.usd_path
                 scale = payload.value.scale
-                payload_target_pos = self.group_offset[i] + torch.tensor([0., 4., j * 0.5 + 1], device=self.device)
+                payload_target_pos = torch.tensor(payload.value.target_pos, device=self.device)
                 payload_target_rot = torch.zeros(4, device=self.device)
                 payload_target_rot[0] = 1
                 payload_pos = payload_pos_dist.sample() + self.group_offset[i] + self.payload_offset[j]
