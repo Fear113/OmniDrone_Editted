@@ -32,6 +32,11 @@ from omni_drones.robots.drone import MultirotorBase
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torchrl.data import CompositeSpec, UnboundedContinuousTensorSpec, DiscreteTensorSpec
 import numpy as np
+from omni_drones.utils.payload import PayloadList
+import omni.physx.scripts.utils as script_utils
+from pxr import Gf, PhysxSchema, UsdGeom, UsdPhysics
+import omni.isaac.core.utils.prims as prim_utils
+from omni.isaac.core.objects import DynamicSphere
 
 targetposition = [0,0,0]
 
@@ -89,6 +94,50 @@ FORMATIONS = {
     "tetragon": REGULAR_TETRAGON,
 }
 
+FORMATION_A1 = [ # 정육면체 
+    [0.35,0.35,0.9],
+    [0.35,-0.35,0.9],
+    [-0.35,0.35,0.9],
+    [-0.35,-0.35,0.9]
+]
+
+FORMATION_A2 = [ # 정육면체, 좀 더 작음
+    [0.33,0.33,0.8],
+    [0.33,-0.33,0.8],
+    [-0.33,0.33,0.8],
+    [-0.33,-0.33,0.8]
+]
+FORMATION_B1 = [ # 직육면체, 정육면체 2개를 이어붙인 구조
+    [0.35, 0.70, 0.9],
+    [0.35, -0.70, 0.9],
+    [-0.35, 0.70, 0.9],
+    [-0.35, -0.70, 0.9]
+]
+FORMATION_B2 = [ # 직육면체, 정육면체 2개를 이어붙인 구조. 좀 더 작음
+    [0.33, 0.66, 0.8],
+    [0.33, -0.66, 0.8],
+    [-0.33, 0.66, 0.8],
+    [-0.33, -0.66, 0.8]
+]
+FORMATION_D1 = [ # 직육면체, 정육면체 6개를 이어붙인 구조. 
+    [0.55, 0.85, 0.85],
+    [0.55, -0.85, 0.85],
+    [-0.55, 0.85, 0.85],
+    [-0.55, -0.85, 0.85]
+]
+FORMATION_D1_S = [ #직육면체, 정육면체 6개를 이어붙인 구조. 좀 더 작음. 
+    [0.45, 0.7, 0.75],
+    [0.45, -0.7, 0.75],
+    [-0.45, 0.7, 0.75],
+    [-0.45, -0.7, 0.75]
+]
+
+
+
+MYFORMATION = np.array([
+    FORMATION_A1, FORMATION_A2, FORMATION_B1, FORMATION_B2, FORMATION_D1, FORMATION_D1_S
+])
+
 def sample_from_grid(cells: torch.Tensor, n):
     idx = torch.randperm(cells.shape[0], device=cells.device)[:n]
     return cells[idx]
@@ -130,7 +179,7 @@ class Formation(IsaacEnv):
 
         # initial state distribution
         self.cells = (
-            make_cells([-20, -20, 0.25], [20, 20, 2], [1.0, 1.0, 0.25])
+            make_cells([-12, -12, 0.25], [12, 1, 2], [1.0, 1.0, 0.25])
             .flatten(0, -2)
             .to(self.device)
         )
@@ -148,6 +197,7 @@ class Formation(IsaacEnv):
         # self.last_cost_l = torch.zeros(self.num_envs, 1, device=self.device)
         self.last_cost_h = torch.zeros(self.num_envs, 1, device=self.device)
         self.last_cost_pos = torch.zeros(self.num_envs, 1, device=self.device)
+        self.envOneHot = torch.zeros(self.num_envs, len(PayloadList), device=self.device)
 
     def _design_scene(self) -> Optional[List[str]]:
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
@@ -158,24 +208,115 @@ class Formation(IsaacEnv):
         target_pos_numpy = np.random.uniform(low=-2, high=2, size=3)
         self.target_pos = torch.tensor([0.0, 0.0, 0.5], device=self.device)
         
-        formation = self.cfg.task.formation
-        if isinstance(formation, str):
-            self.formation = torch.as_tensor(
-                FORMATIONS[formation], device=self.device
-            ).float()
-        elif isinstance(formation, list):
-            self.formation = torch.as_tensor(
-                self.cfg.task.formation, device=self.device
-            )
-        else:
-            raise ValueError(f"Invalid target formation {formation}")
+        
 
-        self.formation = self.formation + self.target_pos
+        # formation = self.cfg.task.formation
+        # if isinstance(formation, str):
+        #     self.formation = torch.as_tensor(
+        #         FORMATIONS[formation], device=self.device
+        #     ).float()
+        # elif isinstance(formation, list):
+        #     self.formation = torch.as_tensor(
+        #         self.cfg.task.formation, device=self.device
+        #     )
+        # else:
+        #     raise ValueError(f"Invalid target formation {formation}")
+        
+        
         # self.formation_L = laplacian(self.formation)
+        init_position = torch.as_tensor([[1.0,1.0,1.0],[1.0,-1.0,1.0],[-1.0,1.0,1.0],[-1.0,-1.0,1.0]],device=self.device)
+        self.drone.spawn(init_position) 
 
-        self.drone.spawn(translations=self.formation)
-        from omni.isaac.core.objects import DynamicSphere
+        self.formation = torch.FloatTensor(np.zeros((self.num_envs,self.drone.n, 3))).to(self.device)
+        self.formation = self.formation + self.target_pos 
 
+        
+        
+        
+        
+        
+        ######## Please remain below comments. It will use again after adding payload types.
+        # USD_PATH = list(PayloadList)[5].value.usd_path
+        # SCALE = list(PayloadList)[5].value.scale
+        # payload_rpy_dist = D.Uniform(
+        #     torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
+        #     torch.tensor([0., 0., 0.], device=self.device) * torch.pi
+        # )
+        # ROT = euler_to_quaternion(payload_rpy_dist.sample())
+        # create_payload([0,0,0.5],
+        #             "/World/envs/env_0/payload_0",
+        #             USD_PATH,
+        #             SCALE,
+        #             ROT) 
+
+        # DynamicSphere(
+        # "/World/envs/env_0/goal1",
+        # translation=torch.tensor(MYFORMATION[5][0]),
+        # color=torch.tensor([1.0, 0.2, 0.2]),
+        # radius=0.3,
+        # mass=0.1,
+        # )
+
+        # DynamicSphere(
+        # "/World/envs/env_0/goal2",
+        # translation=torch.tensor(MYFORMATION[5][1]),
+        # color=torch.tensor([1.0, 0.2, 0.2]),
+        # radius=0.3,
+        # mass=0.1,
+        # )
+
+        # DynamicSphere(
+        # "/World/envs/env_0/goal3",
+        # translation=torch.tensor(MYFORMATION[5][2]),
+        # color=torch.tensor([1.0, 0.2, 0.2]),
+        # radius=0.3,
+        # mass=0.1,
+        # )
+
+        # DynamicSphere(
+        # "/World/envs/env_0/goal4",
+        # translation=torch.tensor(MYFORMATION[5][3]),
+        # color=torch.tensor([1.0, 0.2, 0.2]),
+        # radius=0.3,
+        # mass=0.1,
+        # )
+
+
+        # kit_utils.set_collision_properties(
+        #     "/World/envs/env_0/goal1",
+        #     collision_enabled=True
+        # )
+        # kit_utils.set_rigid_body_properties(
+        #     "/World/envs/env_0/goal1",
+        #     disable_gravity=True
+        # )
+
+        # kit_utils.set_collision_properties(
+        #     "/World/envs/env_0/goal2",
+        #     collision_enabled=True
+        # )
+        # kit_utils.set_rigid_body_properties(
+        #     "/World/envs/env_0/goal2",
+        #     disable_gravity=True
+        # )
+
+        # kit_utils.set_collision_properties(
+        #     "/World/envs/env_0/goal3",
+        #     collision_enabled=True
+        # )
+        # kit_utils.set_rigid_body_properties(
+        #     "/World/envs/env_0/goal3",
+        #     disable_gravity=True
+        # )
+
+        # kit_utils.set_collision_properties(
+        #     "/World/envs/env_0/goal4",
+        #     collision_enabled=True
+        # )
+        # kit_utils.set_rigid_body_properties(
+        #     "/World/envs/env_0/goal4",
+        #     disable_gravity=True
+        # )
         DynamicSphere(
         "/World/envs/env_0/goal",
         translation=torch.tensor([0., 0., 1.5]),
@@ -199,7 +340,8 @@ class Formation(IsaacEnv):
         if self.time_encoding:
             self.time_encoding_dim = 4
             obs_self_dim += self.time_encoding_dim
-
+        payload_type_dim = len(PayloadList)
+        obs_self_dim += payload_type_dim
         observation_spec = CompositeSpec({
             "obs_self": UnboundedContinuousTensorSpec((1, obs_self_dim)),
             "obs_others": UnboundedContinuousTensorSpec((self.drone.n-1, 13+1)),
@@ -249,7 +391,21 @@ class Formation(IsaacEnv):
 
     def _reset_idx(self, env_ids: torch.Tensor):
         self.drone._reset_idx(env_ids)
+        payloadIndex = np.random.randint(len(PayloadList), size=len(env_ids))
+        # payloadIndex = np.random.randint(1,size=len(env_ids))
+        # payloadIndex = 1
+        payloadOneHot = np.zeros((len(env_ids),len(PayloadList)))
+        payloadOneHot[np.arange(len(payloadOneHot)), payloadIndex] = 1
+        self.envOneHot[env_ids] = torch.FloatTensor(payloadOneHot).to(self.device)
+
+        ####### target payload
+        self.formation[env_ids] = torch.FloatTensor(MYFORMATION[payloadIndex]).to(self.device) ################# need to change formation format as tensor with index format
+
+        self.formation[env_ids] += self.target_pos[env_ids]
         
+        if (self.formation[:,:,2] > 2).any():
+            print("hi")
+
         pos = torch.vmap(sample_from_grid, randomness="different")(
             self.cells.expand(len(env_ids), *self.cells.shape), n=self.drone.n
         ) + self.envs_positions[env_ids].unsqueeze(1)
@@ -259,15 +415,9 @@ class Formation(IsaacEnv):
         self.drone.set_world_poses(pos, rot, env_ids)
         self.drone.set_velocities(vel, env_ids)
 
-        if pos.dim()==3:
-            temp = torch.vmap(cost_formation_hausdorff)(
-            pos.reshape(pos.shape[0],1,12), desired_p=self.formation
-            )
-            self.last_cost_h[env_ids] = temp.squeeze(1)
-        else:
-            self.last_cost_h[env_ids] = torch.vmap(cost_formation_hausdorff)(
-            pos, desired_p=self.formation
-        )
+        temp = torch.vmap(cost_formation_hausdorff)(
+        pos, self.formation[env_ids])
+        self.last_cost_h[env_ids] = temp.unsqueeze(dim=1)
         # self.last_cost_l[env_ids] = vmap(cost_formation_laplacian)(
         #     pos, desired_p=self.formation
         # )
@@ -291,6 +441,7 @@ class Formation(IsaacEnv):
         if self.time_encoding:
             t = (self.progress_buf / self.max_episode_length).reshape(-1, 1, 1)
             obs_self.append(t.expand(-1, self.drone.n, self.time_encoding_dim))
+        obs_self.append(self.envOneHot.expand(self.drone.n, self.num_envs, len(PayloadList)).transpose(0,1))
         obs_self = torch.cat(obs_self, dim=-1)
 
         relative_pos = torch.vmap(cpos)(pos, pos)
@@ -322,7 +473,7 @@ class Formation(IsaacEnv):
         # cost_l = vmap(cost_formation_laplacian)(pos, desired_L=self.formation_L)
         pos = self.drone.pos
 
-        cost_h = cost_formation_hausdorff(pos, desired_p=self.formation)
+        cost_h = torch.vmap(cost_formation_hausdorff)(pos, self.formation).unsqueeze(dim=1)
         
         distance = torch.norm(pos.mean(-2, keepdim=True) - self.target_pos, dim=-1)
 
@@ -330,7 +481,7 @@ class Formation(IsaacEnv):
         # reward_pos = 1 / (1 + cost_pos)
 
         # reward_formation = torch.exp(- cost_h * 1.6)
-        reward_pos = torch.exp(- distance)
+        reward_pos = torch.exp(- distance) *2
         reward_heading = self.drone.heading[..., 0].mean(-1, True)
 
         separation = self.drone_pdist.min(dim=-2).values.min(dim=-2).values
@@ -339,7 +490,7 @@ class Formation(IsaacEnv):
             reward_separation * (
                 reward_formation 
                 + reward_formation * (reward_pos + reward_heading)
-                + 0.4 * reward_pos * reward_formation
+                + 0.6 * reward_pos * reward_formation
             )
         )
 
@@ -402,14 +553,13 @@ def laplacian(p: torch.Tensor, normalize=False):
         L = D - A
     return L
 
-@torch.vmap
 def cost_formation_hausdorff(p: torch.Tensor, desired_p: torch.Tensor) -> torch.Tensor:
     if p.dim()==1:
         p = p.reshape(4,3)
     p = p - p.mean(-2, keepdim=True)
     desired_p = desired_p - desired_p.mean(-2, keepdim=True)
     cost = torch.max(directed_hausdorff(p, desired_p), directed_hausdorff(desired_p, p))
-    return cost.unsqueeze(-1)
+    return cost
 def directed_hausdorff(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     """
     p: (*, n, dim)
@@ -417,3 +567,28 @@ def directed_hausdorff(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     """
     d = torch.cdist(p, q, p=2).min(-1).values.max(-1).values
     return d
+
+
+
+def create_payload(pos, prim_path, usd_path, scale, rot):
+    
+
+    payload = prim_utils.create_prim(
+        prim_path=prim_path,
+        usd_path=usd_path,
+        position=pos,
+        orientation=rot,
+        scale=scale,
+    )
+
+    script_utils.setRigidBody(payload, "convexHull", False)
+    UsdPhysics.MassAPI.Apply(payload)
+    payload.GetAttribute("physics:mass").Set(1.36)
+    payload.GetAttribute("physics:rigidBodyEnabled").Set(True)
+
+    kit_utils.set_rigid_body_properties(
+        payload.GetPath(),
+        angular_damping=0.1,
+        linear_damping=0.1
+    )
+    return payload

@@ -54,6 +54,53 @@ from omni.usd import get_world_transform_matrix
 from omni.isaac.core.objects import DynamicSphere
 from omni_drones.robots.robot import ASSET_PATH
 
+
+
+FORMATION_A1 = [ # 정육면체 
+    [0.35,0.35,0.6],
+    [0.35,-0.35,0.6],
+    [-0.35,0.35,0.6],
+    [-0.35,-0.35,0.6]
+]
+
+FORMATION_A2 = [ # 정육면체, 좀 더 작음
+    [0.33,0.33,0.5],
+    [0.33,-0.33,0.5],
+    [-0.33,0.33,0.5],
+    [-0.33,-0.33,0.5]
+]
+FORMATION_B1 = [ # 직육면체, 정육면체 2개를 이어붙인 구조
+    [0.35, 0.70, 0.6],
+    [0.35, -0.70, 0.6],
+    [-0.35, 0.70, 0.6],
+    [-0.35, -0.70, 0.6]
+]
+FORMATION_B2 = [ # 직육면체, 정육면체 2개를 이어붙인 구조. 좀 더 작음
+    [0.33, 0.66, 0.5],
+    [0.33, -0.66, 0.5],
+    [-0.33, 0.66, 0.5],
+    [-0.33, -0.66, 0.5]
+]
+FORMATION_D1 = [ # 직육면체, 정육면체 6개를 이어붙인 구조. 
+    [0.55, 0.85, 0.55],
+    [0.55, -0.85, 0.55],
+    [-0.55, 0.85, 0.55],
+    [-0.55, -0.85, 0.55]
+]
+FORMATION_D1_S = [ #직육면체, 정육면체 6개를 이어붙인 구조. 좀 더 작음. 
+    [0.45, 0.7, 0.45],
+    [0.45, -0.7, 0.45],
+    [-0.45, 0.7, 0.45],
+    [-0.45, -0.7, 0.45]
+]
+
+
+
+MYFORMATION = np.array([
+    FORMATION_A1, FORMATION_A2, FORMATION_B1, FORMATION_B2, FORMATION_D1, FORMATION_D1_S
+])
+
+
 @dataclass
 class Group:
     drones: MultirotorBase
@@ -499,15 +546,27 @@ class Logistics(IsaacEnv):
         target_pos[2] += 1
         root_states[..., :3] = target_pos - pos
 
+        self.envOneHot = torch.zeros(self.num_envs, len(PayloadList), device=self.device)
+        index = list(PayloadList).index(PayloadList[group_snapshot.payloads[group_snapshot.target_payload_idx].name])
+
+        payloadOneHot = np.zeros((1,len(PayloadList)))
+        payloadOneHot[np.arange(len(payloadOneHot)), index] = 1
+        self.envOneHot[0] = torch.FloatTensor(payloadOneHot).to(self.device)
+
         obs_self = [root_states]
         if self.time_encoding:
             t = (self.progress_buf / self.max_episode_length).reshape(-1, 1, 1)
             obs_self.append(t.expand(-1, self.num_drones_per_group, self.time_encoding_dim))
+        obs_self.append(self.envOneHot.expand(self.drone_num//len(self.groups), self.num_envs, len(PayloadList)).transpose(0,1))
         obs_self = torch.cat(obs_self, dim=-1)
+
+
 
         relative_pos = torch.vmap(cpos)(pos, pos)
         drone_pdist = torch.vmap(off_diag)(torch.norm(relative_pos, dim=-1, keepdim=True))
         relative_pos = torch.vmap(off_diag)(relative_pos)
+
+        print(relative_pos)
 
         obs_others = torch.cat([
             relative_pos,

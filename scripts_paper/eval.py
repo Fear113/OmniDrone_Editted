@@ -41,7 +41,7 @@ transport_checkpoint_A1 = './transport_A1_retrain_0924_checkpoint_2000.pt'
 formation_checkpoint_squre = "./checkpoint_long.pt"
 formation_checkpoint_long = "./formation_checkpoint_square.pt"
 
-
+formation_checkpoint_final = './checkpoint_test4.pt'
 @hydra.main(version_base=None, config_path=CONFIG_PATH, config_name="train")
 def main(cfg):
     OmegaConf.register_new_resolver("eval", eval)
@@ -88,13 +88,9 @@ def main(cfg):
     simulation_app.context.new_stage()
 
     formation_env, formation_transform = get_env(name='Formation', config_path='Formation', headless=True)
-    formation_policy_squre = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=formation_env.agent_spec["drone"],
+    formation_policy = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=formation_env.agent_spec["drone"],
                                                     device="cuda")
-    formation_policy_squre.load_state_dict(torch.load(formation_checkpoint_squre))
-
-    formation_policy_long = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=formation_env.agent_spec["drone"],
-                                                    device="cuda")
-    formation_policy_long.load_state_dict(torch.load(formation_checkpoint_long))
+    formation_policy.load_state_dict(torch.load(formation_checkpoint_final))
 
     simulation_app.context.close_stage()
     simulation_app.context.new_stage()

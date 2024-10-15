@@ -148,3 +148,5 @@ plot/
 test*.ipynb
 examples/*.mp4
 *.sh
+*.mp4
+*.usd
