@@ -1,6 +1,6 @@
 # hydra.job.chdir: false
 
-headless: False
+headless: false
 
 sim: ${task.sim}
 env: ${task.env}
@@ -24,7 +24,7 @@ wandb:
   project: omnidrones
   mode: disabled # set to 'disabled' when debugging locally
   run_id: 
-  monitor_gym: True
+  monitor_gym: true
   tags: 
 
 defaults:

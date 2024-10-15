@@ -16,15 +16,9 @@ class PayloadInfo:
     name: str
 
 class PayloadList(Enum):
-    A1 = PayloadInfo(f"{dir}/WoodenCrate_A1.usd", (0.008, 0.008, 0.008), 'A1')
-    A2 = PayloadInfo(f"{dir}/WoodenCrate_A2.usd", (0.0065, 0.0065, 0.0065), 'A2')
-    B1 = PayloadInfo(f"{dir}/WoodenCrate_B1.usd", (0.008, 0.008, 0.008), 'B1')
-    B2 = PayloadInfo(f"{dir}/WoodenCrate_B2.usd", (0.0065, 0.0065, 0.0065), 'B2')
-    D1 = PayloadInfo(f"{dir}/WoodenCrate_D1.usd", (0.006, 0.006, 0.006), 'D1')
-    D1_s = PayloadInfo(f"{dir}/WoodenCrate_D1.usd", (0.0045, 0.0045, 0.0045), 'D1_s')
-    A1 = PayloadInfo(f"{dir}/WoodenCrate_A1.usd", (0.008, 0.008, 0.008), (3., 4, 0), 'A1')
-    A2 = PayloadInfo(f"{dir}/WoodenCrate_A2.usd", (0.0065, 0.0065, 0.0065), (2., 4, 0), 'A2')
-    B1 = PayloadInfo(f"{dir}/WoodenCrate_B1.usd", (0.008, 0.008, 0.008), (1., 4, 0), 'B1')
-    B2 = PayloadInfo(f"{dir}/WoodenCrate_B2.usd", (0.0065, 0.0065, 0.0065), (0., 4, 0), 'B2')
-    D1 = PayloadInfo(f"{dir}/WoodenCrate_D1.usd", (0.006, 0.006, 0.006), (-1., 4, 0), 'D1')
-    D1_s = PayloadInfo(f"{dir}/WoodenCrate_D1.usd", (0.0045, 0.0045, 0.0045), (-2., 4, 0), 'D1_s')
+    A1 = PayloadInfo(f"{dir}/WoodenCrate_A1.usd", (0.008, 0.008, 0.008), (-1., -2, 0), 'A1')
+    A2 = PayloadInfo(f"{dir}/WoodenCrate_A2.usd", (0.0065, 0.0065, 0.0065), (1., 2, 0), 'A2')
+    B1 = PayloadInfo(f"{dir}/WoodenCrate_B1.usd", (0.008, 0.008, 0.008), (0., -2, 0), 'B1')
+    B2 = PayloadInfo(f"{dir}/WoodenCrate_B2.usd", (0.0065, 0.0065, 0.0065), (-1., 2, 0), 'B2')
+    D1 = PayloadInfo(f"{dir}/WoodenCrate_D1.usd", (0.006, 0.006, 0.006), (0., 3., 0), 'D1')
+    D1_s = PayloadInfo(f"{dir}/WoodenCrate_D1.usd", (0.0045, 0.0045, 0.0045), (0., -2, 0), 'D1_s')

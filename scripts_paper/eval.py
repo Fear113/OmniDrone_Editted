@@ -106,7 +106,7 @@ def main(cfg):
     td = env.reset()
 
     state_snapshot = env.snapshot_state()
-    max_tasks = 15
+    max_tasks = 30
 
     for i in range(max_tasks):
         frame_count = 0
