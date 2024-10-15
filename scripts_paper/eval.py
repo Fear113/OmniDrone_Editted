@@ -121,12 +121,8 @@ def main(cfg):
                         transformed_state = transport_transform._step(env.get_transport_state(j), env.get_transport_state(j))
                         actions.append(transport_policy_squre(transformed_state, deterministic=True)['agents']['action'])
                 else:
-                    if group.payloads[group.target_payload_idx].name == 'D1':
-                        transformed_state = formation_transform._step(env.get_formation_state(j), env.get_formation_state(j))
-                        actions.append(formation_policy_squre(transformed_state, deterministic=True)['agents']['action'])
-                    else:
-                        transformed_state = formation_transform._step(env.get_formation_state(j), env.get_formation_state(j))
-                        actions.append(formation_policy_long(transformed_state, deterministic=True)['agents']['action'])
+                    transformed_state = formation_transform._step(env.get_formation_state(j), env.get_formation_state(j))
+                    actions.append(formation_policy(transformed_state, deterministic=True)['agents']['action'])
 
 
             td['agents']['action'] = torch.cat(actions,dim=1)
