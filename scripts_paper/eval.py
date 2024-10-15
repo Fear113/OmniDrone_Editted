@@ -50,7 +50,7 @@ def main(cfg):
     simulation_app = init_simulation_app(cfg)
 
     from omni_drones.envs.isaac_env import IsaacEnv
-    from omni_drones.envs.logistics.state_snapshot import StateSnapshot
+    from omni_drones.envs.logistics.state_snapshot import StateSnapshot, Stage
 
     def get_env(name, config_path, headless, initial_state: Optional[StateSnapshot] = None):
         cfg = hydra.compose(config_name="train", overrides=[f"task={config_path}", "task.env.num_envs=1"])
@@ -99,6 +99,7 @@ def main(cfg):
 
     frames = []
     seed = 2
+    action_size = torch.Size([1,4,4])
 
     env.enable_render(True)
     env.set_seed(seed)
@@ -113,7 +114,14 @@ def main(cfg):
             actions = []
 
             for j, group in enumerate(state_snapshot.group_snapshots):
-                if group.is_transporting:
+                if group.stage == Stage.FORMATION:
+                    transformed_state = formation_transform._step(env.get_formation_state(j), env.get_formation_state(j))
+                    actions.append(formation_policy(transformed_state, deterministic=True)['agents']['action'])
+                elif group.stage == Stage.POST_FORMATION:
+                    actions.append(torch.full(action_size, -0.3, device="cuda"))
+                elif group.stage == Stage.PRE_TRANSPORT:
+                    actions.append(torch.full(action_size, 0, device="cuda"))
+                elif group.stage == Stage.TRANSPORT:
                     if group.payloads[group.target_payload_idx].name == 'D1':
                         transformed_state = transport_transform._step(env.get_transport_state(j), env.get_transport_state(j))
                         actions.append(transport_policy_long(transformed_state, deterministic=True)['agents']['action'])
@@ -121,8 +129,7 @@ def main(cfg):
                         transformed_state = transport_transform._step(env.get_transport_state(j), env.get_transport_state(j))
                         actions.append(transport_policy_squre(transformed_state, deterministic=True)['agents']['action'])
                 else:
-                    transformed_state = formation_transform._step(env.get_formation_state(j), env.get_formation_state(j))
-                    actions.append(formation_policy(transformed_state, deterministic=True)['agents']['action'])
+                    raise NotImplementedError
 
 
             td['agents']['action'] = torch.cat(actions,dim=1)
