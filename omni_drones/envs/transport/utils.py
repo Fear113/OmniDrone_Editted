@@ -131,12 +131,40 @@ class TransportationGroup(RobotBase):
                             [-0.6, -0.9, 0.45],
                             [-0.6, 0.9, 0.45],
                         ])
+                    elif name=="D1_s":
+                        drone_translations = torch.tensor([
+                            [0.45, 0.675, 0.375],
+                            [0.45, -0.675, 0.375],
+                            [-0.45, -0.675, 0.375],
+                            [-0.45, 0.675, 0.375],
+                        ])
                     elif name=="A1":
                         drone_translations = torch.tensor([
                             [0.4, 0.4, 0.65],
                             [0.4, -0.4, 0.65],
                             [-0.4, -0.4, 0.65],
                             [-0.4, 0.4, 0.65],
+                        ])
+                    elif name=="A2":
+                        drone_translations = torch.tensor([
+                            [0.325, 0.325, 0.575],
+                            [0.325, -0.325, 0.575],
+                            [-0.325, -0.325, 0.575],
+                            [-0.325, 0.325, 0.575],
+                        ])
+                    elif name=="B1":
+                        drone_translations = torch.tensor([
+                            [0.4, 0.8, 0.65],
+                            [0.4, -0.8, 0.65],
+                            [-0.4, -0.8, 0.65],
+                            [-0.4, 0.8, 0.65],
+                        ])
+                    elif name=="B2":
+                        drone_translations = torch.tensor([
+                            [0.325, 0.65, 0.575],
+                            [0.325, -0.65, 0.575],
+                            [-0.325, -0.65, 0.575],
+                            [-0.325, 0.65, 0.575],
                         ])
                 elif self.num_drones == 6:
                     drone_translations = torch.tensor([
