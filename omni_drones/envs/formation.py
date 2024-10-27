@@ -32,7 +32,7 @@ from omni_drones.robots.drone import MultirotorBase
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torchrl.data import CompositeSpec, UnboundedContinuousTensorSpec, DiscreteTensorSpec
 import numpy as np
-from omni_drones.utils.payload import PayloadList
+from omni_drones.utils.payload import Payload
 import omni.physx.scripts.utils as script_utils
 from pxr import Gf, PhysxSchema, UsdGeom, UsdPhysics
 import omni.isaac.core.utils.prims as prim_utils
@@ -197,7 +197,7 @@ class Formation(IsaacEnv):
         # self.last_cost_l = torch.zeros(self.num_envs, 1, device=self.device)
         self.last_cost_h = torch.zeros(self.num_envs, 1, device=self.device)
         self.last_cost_pos = torch.zeros(self.num_envs, 1, device=self.device)
-        self.envOneHot = torch.zeros(self.num_envs, len(PayloadList), device=self.device)
+        self.envOneHot = torch.zeros(self.num_envs, len(Payload), device=self.device)
 
     def _design_scene(self) -> Optional[List[str]]:
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
@@ -340,7 +340,7 @@ class Formation(IsaacEnv):
         if self.time_encoding:
             self.time_encoding_dim = 4
             obs_self_dim += self.time_encoding_dim
-        payload_type_dim = len(PayloadList)
+        payload_type_dim = len(Payload)
         obs_self_dim += payload_type_dim
         observation_spec = CompositeSpec({
             "obs_self": UnboundedContinuousTensorSpec((1, obs_self_dim)),
@@ -391,10 +391,10 @@ class Formation(IsaacEnv):
 
     def _reset_idx(self, env_ids: torch.Tensor):
         self.drone._reset_idx(env_ids)
-        payloadIndex = np.random.randint(len(PayloadList), size=len(env_ids))
+        payloadIndex = np.random.randint(len(Payload), size=len(env_ids))
         # payloadIndex = np.random.randint(1,size=len(env_ids))
         # payloadIndex = 1
-        payloadOneHot = np.zeros((len(env_ids),len(PayloadList)))
+        payloadOneHot = np.zeros((len(env_ids),len(Payload)))
         payloadOneHot[np.arange(len(payloadOneHot)), payloadIndex] = 1
         self.envOneHot[env_ids] = torch.FloatTensor(payloadOneHot).to(self.device)
 
@@ -441,7 +441,7 @@ class Formation(IsaacEnv):
         if self.time_encoding:
             t = (self.progress_buf / self.max_episode_length).reshape(-1, 1, 1)
             obs_self.append(t.expand(-1, self.drone.n, self.time_encoding_dim))
-        obs_self.append(self.envOneHot.expand(self.drone.n, self.num_envs, len(PayloadList)).transpose(0,1))
+        obs_self.append(self.envOneHot.expand(self.drone.n, self.num_envs, len(Payload)).transpose(0, 1))
         obs_self = torch.cat(obs_self, dim=-1)
 
         relative_pos = torch.vmap(cpos)(pos, pos)

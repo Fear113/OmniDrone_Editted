@@ -34,7 +34,7 @@ import numpy as np
 from omni_drones.envs.logistics import state_snapshot
 from omni_drones.envs.logistics.state_snapshot import StateSnapshot, ConnectedPayload, DisconnectedPayload, \
     GroupSnapshot, Stage
-from omni_drones.utils.payload import PayloadList
+from omni_drones.utils.payload import Payload
 from omni_drones.views import RigidPrimView
 
 from omni.isaac.core import World
@@ -83,7 +83,7 @@ class Logistics(IsaacEnv):
         self.payload_offset = self.make_payload_offset()
         self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
         self.done_group = None
-        self.done_payloads = {payload.name:0 for payload in PayloadList}
+        self.done_payloads = {payload.name:0 for payload in Payload}
 
         super().__init__(cfg, headless)
 
@@ -124,13 +124,13 @@ class Logistics(IsaacEnv):
                             temp_imaginary = temp_quatd.imaginary
                             temp_real = temp_quatd.real
                             if j < group_snapshot.target_payload_idx:
-                                if payload.name == "D1":
+                                if payload.detail().name == "D1":
                                     temp_pos[2] = 0.05 + j * 0.3 + j * 0.07
-                                elif payload.name == "D1_s":
+                                elif payload.detail().name == "D1_s":
                                     temp_pos[2] = 0.0125 + j * 0.225 + j * 0.07
-                                elif payload.name == "A1" or payload.name == "B1":
+                                elif payload.detail().name == "A1" or payload.detail().name == "B1":
                                     temp_pos[2] = 0.1 + j * 0.4 + j * 0.07
-                                elif payload.name == "A2" or payload.name == "B2":
+                                elif payload.detail().name == "A2" or payload.detail().name == "B2":
                                     temp_pos[2] = 0.0625 + j * 0.325 + j * 0.07
                                 temp_imaginary[0] = 0
                                 temp_imaginary[1] = 0
@@ -138,11 +138,8 @@ class Logistics(IsaacEnv):
                                 temp_real = 1.0
                             orient = np.insert(np.array(temp_imaginary), 0, temp_real)
                             _payload = DisconnectedPayload(
-                                payload.usd_path,
-                                payload.scale,
-                                payload.target_pos,
-                                payload.target_rot,
-                                payload.name,
+                                payload.type,
+                                payload.detail().target_pos,
                                 torch.FloatTensor(temp_pos).to(device=self.device),
                                 torch.FloatTensor(orient).to(device=self.device)
                             )
@@ -150,16 +147,14 @@ class Logistics(IsaacEnv):
                         elif group_snapshot.stage == Stage.POST_FORMATION:
                             world_transform_matrix = get_world_transform_matrix(self.groups[i].payloads[j])
                             temp_pos = world_transform_matrix.ExtractTranslation()
+                            temp_pos[2] += 1
                             temp_quatd = world_transform_matrix.ExtractRotationQuat()
                             orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
-                            target_pos = payload.target_pos.clone()
-                            target_pos[2] = self.done_payloads[payload.name] * 0.5 + 1
+                            target_pos = payload.detail().target_pos
+                            target_pos = (target_pos[0], target_pos[1], self.done_payloads[payload.detail().name] * 0.5 + 1)
                             _payload = ConnectedPayload(
-                                payload.usd_path,
-                                payload.scale,
+                                payload.type,
                                 target_pos,
-                                payload.target_rot,
-                                payload.name,
                                 torch.FloatTensor(temp_pos).to(device=self.device),
                                 torch.FloatTensor(orient).to(device=self.device),
                                 torch.zeros((1, 6)),
@@ -174,11 +169,8 @@ class Logistics(IsaacEnv):
                             joint_vel = self.groups[i].transport.get_joint_velocities(True)
 
                             payloads.append(ConnectedPayload(
-                                payload.usd_path,
-                                payload.scale,
-                                payload.target_pos,
-                                payload.target_rot,
-                                payload.name,
+                                payload.type,
+                                payload.detail().target_pos,
                                 pos.squeeze(axis=0),
                                 rot.squeeze(axis=0),
                                 vel.squeeze(axis=0),
@@ -186,18 +178,15 @@ class Logistics(IsaacEnv):
                                 joint_vel.squeeze(axis=0)
                             ))
                         elif group_snapshot.stage == Stage.TRANSPORT:
-                            self.done_payloads[payload.name] += 1
+                            self.done_payloads[payload.detail().name] += 1
                             tempPayload = self.groups[i].transport.payload_view
                             current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
                             drone_rot = torch.zeros((self.num_drones_per_group, 4), device=self.device)
                             drone_rot[:, 0] = 1
                             drone_vel = torch.zeros((self.num_drones_per_group, 6), device=self.device)
                             _payload = DisconnectedPayload(
-                                payload.usd_path,
-                                payload.scale,
-                                payload.target_pos,
-                                payload.target_rot,
-                                payload.name,
+                                payload.type,
+                                payload.detail().target_pos,
                                 current_payload_pos.squeeze(axis=0),
                                 current_payload_rot.squeeze(axis=0)
                             )
@@ -211,13 +200,13 @@ class Logistics(IsaacEnv):
                         temp_imaginary = temp_quatd.imaginary
                         temp_real = temp_quatd.real
                         if j < group_snapshot.target_payload_idx:
-                            if payload.name == "D1":
+                            if payload.detail().name == "D1":
                                 temp_pos[2] = 0.05 + j * 0.3 + j * 0.07
-                            elif payload.name == "D1_s":
+                            elif payload.detail().name == "D1_s":
                                 temp_pos[2] = 0.0125 + j * 0.225 + j * 0.07
-                            elif payload.name == "A1" or payload.name == "B1":
+                            elif payload.detail().name == "A1" or payload.detail().name == "B1":
                                 temp_pos[2] = 0.1 + j * 0.4 + j * 0.07
-                            elif payload.name == "A2" or payload.name == "B2":
+                            elif payload.detail().name == "A2" or payload.detail().name == "B2":
                                 temp_pos[2] = 0.0625 + j * 0.325 + j * 0.07
                             temp_imaginary[0] = 0
                             temp_imaginary[1] = 0
@@ -225,11 +214,8 @@ class Logistics(IsaacEnv):
                             temp_real = 1.0
                         orient = np.insert(np.array(temp_imaginary), 0, temp_real)
                         _payload = DisconnectedPayload(
-                            payload.usd_path,
-                            payload.scale,
-                            payload.target_pos,
-                            payload.target_rot,
-                            payload.name,
+                            payload.type,
+                            payload.detail().target_pos,
                             torch.FloatTensor(temp_pos).to(device=self.device),
                             torch.FloatTensor(orient).to(device=self.device)
                         )
@@ -248,11 +234,8 @@ class Logistics(IsaacEnv):
                         joint_vel = self.groups[i].transport.get_joint_velocities(True)
 
                         payloads.append(ConnectedPayload(
-                            payload.usd_path,
-                            payload.scale,
-                            payload.target_pos,
-                            payload.target_rot,
-                            payload.name,
+                            payload.type,
+                            payload.detail().target_pos,
                             pos.squeeze(axis=0),
                             rot.squeeze(axis=0),
                             vel.squeeze(axis=0),
@@ -267,13 +250,13 @@ class Logistics(IsaacEnv):
                         temp_imaginary = temp_quatd.imaginary
                         temp_real = temp_quatd.real
                         if j < group_snapshot.target_payload_idx:
-                            if payload.name == "D1":
+                            if payload.detail().name == "D1":
                                 temp_pos[2] = 0.05 + j * 0.3 + j * 0.07
-                            elif payload.name == "D1_s":
+                            elif payload.detail().name == "D1_s":
                                 temp_pos[2] = 0.0125 + j * 0.225 + j * 0.07
-                            elif payload.name == "A1" or payload.name == "B1":
+                            elif payload.detail().name == "A1" or payload.detail().name == "B1":
                                 temp_pos[2] = 0.1 + j * 0.4 + j * 0.07
-                            elif payload.name == "A2" or payload.name == "B2":
+                            elif payload.detail().name == "A2" or payload.detail().name == "B2":
                                 temp_pos[2] = 0.0625 + j * 0.325 + j * 0.07
                             temp_imaginary[0] = 0
                             temp_imaginary[1] = 0
@@ -281,11 +264,8 @@ class Logistics(IsaacEnv):
                             temp_real = 1.0
                         orient = np.insert(np.array(temp_imaginary), 0, temp_real)
                         payloads.append(DisconnectedPayload(
-                            payload.usd_path,
-                            payload.scale,
-                            payload.target_pos,
-                            payload.target_rot,
-                            payload.name,
+                            payload.type,
+                            payload.detail().target_pos,
                             torch.FloatTensor(temp_pos).to(device=self.device),
                             torch.FloatTensor(orient).to(device=self.device)
                         ))
@@ -331,6 +311,10 @@ class Logistics(IsaacEnv):
         )
 
         groups = []
+        payload_type = torch.zeros(self.num_groups, self.num_payloads_per_group)
+        for i in range(self.num_groups):
+            payload_type[i] = torch.randperm(Payload.__len__())[:self.num_payloads_per_group]
+
         for i in range(self.num_groups):
             drone_pos = self.formation + self.group_offset[i]
             drone_rot = torch.zeros((self.num_drones_per_group, 4), device=self.device)
@@ -340,54 +324,19 @@ class Logistics(IsaacEnv):
             stage = Stage.FORMATION
             count = 0
             payloads = []
-
             for j in range(self.num_payloads_per_group):
-                if i==0:
-                    if j == 0:
-                        payload = PayloadList['A1']
-                    elif j==1:
-                        payload = PayloadList['B1']
-                    elif j==2:
-                        payload = PayloadList['D1']
-                    elif j==3:
-                        payload = PayloadList['D1']
-                    elif j==4:
-                        payload = PayloadList['B1']
-                    elif j==5:
-                        payload = PayloadList['A1']
-                    else:
-                        payload = random.choice(list(PayloadList))
-                elif i==1:
-                    if j == 0:
-                        payload = PayloadList['D1']
-                    elif j==1:
-                        payload = PayloadList['A1']
-                    elif j==2:
-                        payload = PayloadList['B1']
-                    elif j==3:
-                        payload = PayloadList['D1']
-                    elif j==4:
-                        payload = PayloadList['A1']
-                    elif j==5:
-                        payload = PayloadList['B1']
-                    else:
-                        payload = random.choice(list(PayloadList))
-                usd_path = payload.value.usd_path
-                scale = payload.value.scale
-                payload_target_pos = torch.tensor(payload.value.target_pos, device=self.device)
-                payload_target_rot = torch.zeros(4, device=self.device)
-                payload_target_rot[0] = 1
+                payload = Payload.get(payload_type[i][j])
                 payload_pos = payload_pos_dist.sample() + self.group_offset[i] + self.payload_offset[j]
-                if payload.name == "D1":
+                if payload.name == "D1" or payload.name == "CC1":
                     payload_pos[2] = 0.05
-                elif payload.name == "D1_s":
-                    payload_pos[2] = 0.0125 
-                elif payload.name == "A1" or payload.name == "B1":
+                elif payload.name == "D1_s" or payload.name == "CC2":
+                    payload_pos[2] = 0.0125
+                elif payload.name == "A1" or payload.name == "B1" or payload.name == "CA1" or payload.name == "CB1":
                     payload_pos[2] = 0.1
-                elif payload.name == "A2" or payload.name == "B2":
+                elif payload.name == "A2" or payload.name == "B2" or payload.name == "CA2" or payload.name == "CB2":
                     payload_pos[2] = 0.0625
                 payload_rot = euler_to_quaternion(payload_rpy_dist.sample())
-                payloads.append(DisconnectedPayload(usd_path, scale, payload_target_pos, payload_target_rot, payload.value.name ,payload_pos, payload_rot))
+                payloads.append(DisconnectedPayload(payload, payload.value.target_pos, payload_pos, payload_rot))
 
             groups.append(
                 GroupSnapshot(drone_pos, drone_rot, drone_vel, target_payload_idx, stage, count, payloads)
@@ -480,28 +429,15 @@ class Logistics(IsaacEnv):
                     translations=payload_position,
                     prim_paths=[group_prim_path],
                     enable_collision=True,
-                    payload_usd=payload.usd_path,
-                    payload_scale=payload.scale,
-                    name = payload.name
+                    payload_usd=payload.detail().usd_path,
+                    payload_scale=payload.detail().scale,
+                    name = payload.detail().name
                 )
-                if group_snapshot.payloads[group_snapshot.target_payload_idx].name == "D1":
-                    target_scale = torch.tensor([0.6, 0.9, 0.3])
-                elif group_snapshot.payloads[group_snapshot.target_payload_idx].name == "D1_s":
-                    target_scale = torch.tensor([0.45, 0.675, 0.225])
-                elif group_snapshot.payloads[group_snapshot.target_payload_idx].name == "A1":
-                    target_scale = torch.tensor([0.4, 0.4, 0.4])
-                elif group_snapshot.payloads[group_snapshot.target_payload_idx].name == "A2":
-                    target_scale = torch.tensor([0.325, 0.325, 0.325])
-                elif group_snapshot.payloads[group_snapshot.target_payload_idx].name == "B1":
-                    target_scale = torch.tensor([0.4, 0.8, 0.4])
-                elif group_snapshot.payloads[group_snapshot.target_payload_idx].name == "B2":
-                    target_scale = torch.tensor([0.325, 0.65, 0.325])
-                else:
-                    target_scale = torch.tensor([0.4, 0.4, 0.4])
+
                 DynamicCuboid(
                     "/World/envs/env_0/payloadTargetVis{}".format(i),
-                    position=group_snapshot.payloads[group_snapshot.target_payload_idx].target_pos.clone().detach(),
-                    scale=target_scale,
+                    position=group_snapshot.target_payload().target_pos,
+                    scale=group_snapshot.target_payload().detail().shadow_scale,
                     orientation=(0.7071068,0,0,0),
                     color=torch.tensor([0.8, 0.1, 0.1]),
                     size=2.01,
@@ -525,8 +461,8 @@ class Logistics(IsaacEnv):
                 if isinstance(payload, DisconnectedPayload):
                     temp_payload = self.create_payload(payload.payload_pos,
                                                        f"{group_prim_path}/payload_{j}",
-                                                       payload.usd_path,
-                                                       payload.scale,
+                                                       payload.detail().usd_path,
+                                                       payload.detail().scale,
                                                        payload.payload_rot)  #
                     payloads.append(temp_payload)
                 else:
@@ -629,10 +565,10 @@ class Logistics(IsaacEnv):
         target_pos[2] += 1
         root_states[..., :3] = target_pos - pos
 
-        self.envOneHot = torch.zeros(self.num_envs, len(PayloadList), device=self.device)
-        index = list(PayloadList).index(PayloadList[group_snapshot.payloads[group_snapshot.target_payload_idx].name])
+        self.envOneHot = torch.zeros(self.num_envs, len(Payload), device=self.device)
+        index = list(Payload).index(Payload[group_snapshot.target_payload().detail().name])
 
-        payloadOneHot = np.zeros((1,len(PayloadList)))
+        payloadOneHot = np.zeros((1,len(Payload)))
         payloadOneHot[np.arange(len(payloadOneHot)), index] = 1
         self.envOneHot[0] = torch.FloatTensor(payloadOneHot).to(self.device)
 
@@ -640,7 +576,7 @@ class Logistics(IsaacEnv):
         if self.time_encoding:
             t = (self.progress_buf / self.max_episode_length).reshape(-1, 1, 1)
             obs_self.append(t.expand(-1, self.num_drones_per_group, self.time_encoding_dim))
-        obs_self.append(self.envOneHot.expand(self.drone_num//len(self.groups), self.num_envs, len(PayloadList)).transpose(0,1))
+        obs_self.append(self.envOneHot.expand(self.drone_num // len(self.groups), self.num_envs, len(Payload)).transpose(0, 1))
         obs_self = torch.cat(obs_self, dim=-1)
 
 
@@ -688,7 +624,7 @@ class Logistics(IsaacEnv):
         drone_pdist = torch.norm(drone_rpos, dim=-1, keepdim=True)
         payload_drone_rpos = payload_pos.unsqueeze(1) - drone_pos
 
-        payload_target_pos = group_snapshot.payloads[group_snapshot.target_payload_idx].target_pos
+        payload_target_pos = torch.tensor(group_snapshot.payloads[group_snapshot.target_payload_idx].target_pos, device=self.device)
         payload_target_heading = torch.zeros(1, 3, device=self.device)
 
         target_payload_rpose = torch.cat([
@@ -754,9 +690,10 @@ class Logistics(IsaacEnv):
                 payload_heading: torch.Tensor = quat_axis(payload_rot, axis=0)
 
                 payload = group_snapshot.payloads[group_snapshot.target_payload_idx]
+                payload_target_pos = torch.tensor(payload.detail().target_pos, device=self.device)
 
                 target_payload_rpose = torch.cat([
-                    payload.target_pos - payload_pos,
+                    payload_target_pos - payload_pos,
                     payload_target_heading - payload_heading], dim=-1)
 
                 p_distance = torch.norm(target_payload_rpose, dim=-1, keepdim=True)

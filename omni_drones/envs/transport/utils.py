@@ -37,7 +37,7 @@ import omni_drones.utils.scene as scene_utils
 
 from omni_drones.robots import RobotBase, RobotCfg
 from omni_drones.robots.drone import MultirotorBase
-from omni_drones.utils.payload import PayloadList
+from omni_drones.utils.payload import Payload
 from omni_drones.utils.torch import quat_axis
 from dataclasses import dataclass
 
@@ -75,8 +75,8 @@ class TransportationGroup(RobotBase):
         enable_collision: bool = False,
         drone_translations_origin = None,
         orientations = None,
-        payload_usd = PayloadList.A1.value.usd_path,
-        payload_scale = PayloadList.A1.value.scale,
+        payload_usd = Payload.CA1.value.usd_path,
+        payload_scale = Payload.CA1.value.scale,
         name = None
     ):
 
@@ -124,42 +124,42 @@ class TransportationGroup(RobotBase):
                 drone_translations = drone_translations_origin
             else:
                 if self.num_drones == 4:
-                    if name=="D1" or name is None:
+                    if name=="D1" or name=="CC1" or name is None:
                         drone_translations = torch.tensor([
                             [0.6, 0.9, 0.45],
                             [0.6, -0.9, 0.45],
                             [-0.6, -0.9, 0.45],
                             [-0.6, 0.9, 0.45],
                         ])
-                    elif name=="D1_s":
+                    elif name=="D1_s" or name=="CC2":
                         drone_translations = torch.tensor([
                             [0.45, 0.675, 0.375],
                             [0.45, -0.675, 0.375],
                             [-0.45, -0.675, 0.375],
                             [-0.45, 0.675, 0.375],
                         ])
-                    elif name=="A1":
+                    elif name=="A1" or name=="CA1":
                         drone_translations = torch.tensor([
                             [0.4, 0.4, 0.65],
                             [0.4, -0.4, 0.65],
                             [-0.4, -0.4, 0.65],
                             [-0.4, 0.4, 0.65],
                         ])
-                    elif name=="A2":
+                    elif name=="A2" or name=="CA2":
                         drone_translations = torch.tensor([
                             [0.325, 0.325, 0.575],
                             [0.325, -0.325, 0.575],
                             [-0.325, -0.325, 0.575],
                             [-0.325, 0.325, 0.575],
                         ])
-                    elif name=="B1":
+                    elif name=="B1" or name=="CB1":
                         drone_translations = torch.tensor([
                             [0.4, 0.8, 0.65],
                             [0.4, -0.8, 0.65],
                             [-0.4, -0.8, 0.65],
                             [-0.4, 0.8, 0.65],
                         ])
-                    elif name=="B2":
+                    elif name=="B2" or name=="CB2":
                         drone_translations = torch.tensor([
                             [0.325, 0.65, 0.575],
                             [0.325, -0.65, 0.575],

@@ -122,7 +122,7 @@ def main(cfg):
                 elif group.stage == Stage.PRE_TRANSPORT:
                     actions.append(torch.full(action_size, 0, device="cuda"))
                 elif group.stage == Stage.TRANSPORT:
-                    if group.payloads[group.target_payload_idx].name == 'D1':
+                    if group.target_payload().type.name == "D1" or group.target_payload().type.name == "CC1":
                         transformed_state = transport_transform._step(env.get_transport_state(j), env.get_transport_state(j))
                         actions.append(transport_policy_long(transformed_state, deterministic=True)['agents']['action'])
                     else:
