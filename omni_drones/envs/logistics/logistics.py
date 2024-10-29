@@ -118,30 +118,19 @@ class Logistics(IsaacEnv):
                 for j, payload in enumerate(group_snapshot.payloads):
                     if target_payload_idx == j:
                         if group_snapshot.stage == Stage.FORMATION:
-                            world_transform_matrix = get_world_transform_matrix(self.groups[i].payloads[j])
-                            temp_pos = world_transform_matrix.ExtractTranslation()
-                            temp_quatd = world_transform_matrix.ExtractRotationQuat()
-                            temp_imaginary = temp_quatd.imaginary
-                            temp_real = temp_quatd.real
-                            if j < group_snapshot.target_payload_idx:
-                                if payload.detail().name == "D1":
-                                    temp_pos[2] = 0.05 + j * 0.3 + j * 0.07
-                                elif payload.detail().name == "D1_s":
-                                    temp_pos[2] = 0.0125 + j * 0.225 + j * 0.07
-                                elif payload.detail().name == "A1" or payload.detail().name == "B1":
-                                    temp_pos[2] = 0.1 + j * 0.4 + j * 0.07
-                                elif payload.detail().name == "A2" or payload.detail().name == "B2":
-                                    temp_pos[2] = 0.0625 + j * 0.325 + j * 0.07
-                                temp_imaginary[0] = 0
-                                temp_imaginary[1] = 0
-                                temp_imaginary[2] = 0
-                                temp_real = 1.0
-                            orient = np.insert(np.array(temp_imaginary), 0, temp_real)
+                            tempPayload_path = self.groups[i].payloads[j].GetPath()
+                            tempPayload = RigidPrimView(
+                                f"{tempPayload_path}",
+                                reset_xform_properties=False,
+                                track_contact_forces=False
+                            )
+                            current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
+
                             _payload = DisconnectedPayload(
                                 payload.type,
                                 payload.detail().target_pos,
-                                torch.FloatTensor(temp_pos).to(device=self.device),
-                                torch.FloatTensor(orient).to(device=self.device)
+                                current_payload_pos.squeeze(axis=0),
+                                current_payload_rot.squeeze(axis=0)
                             )
                             payloads.append(_payload)
                         elif group_snapshot.stage == Stage.POST_FORMATION:
@@ -181,6 +170,7 @@ class Logistics(IsaacEnv):
                             self.done_payloads[payload.detail().name] += 1
                             tempPayload = self.groups[i].transport.payload_view
                             current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
+
                             drone_rot = torch.zeros((self.num_drones_per_group, 4), device=self.device)
                             drone_rot[:, 0] = 1
                             drone_vel = torch.zeros((self.num_drones_per_group, 6), device=self.device)
@@ -194,30 +184,19 @@ class Logistics(IsaacEnv):
                         else:
                             raise NotImplementedError
                     else:
-                        world_transform_matrix = get_world_transform_matrix(self.groups[i].payloads[j])
-                        temp_pos = world_transform_matrix.ExtractTranslation()
-                        temp_quatd = world_transform_matrix.ExtractRotationQuat()
-                        temp_imaginary = temp_quatd.imaginary
-                        temp_real = temp_quatd.real
-                        if j < group_snapshot.target_payload_idx:
-                            if payload.detail().name == "D1":
-                                temp_pos[2] = 0.05 + j * 0.3 + j * 0.07
-                            elif payload.detail().name == "D1_s":
-                                temp_pos[2] = 0.0125 + j * 0.225 + j * 0.07
-                            elif payload.detail().name == "A1" or payload.detail().name == "B1":
-                                temp_pos[2] = 0.1 + j * 0.4 + j * 0.07
-                            elif payload.detail().name == "A2" or payload.detail().name == "B2":
-                                temp_pos[2] = 0.0625 + j * 0.325 + j * 0.07
-                            temp_imaginary[0] = 0
-                            temp_imaginary[1] = 0
-                            temp_imaginary[2] = 0
-                            temp_real = 1.0
-                        orient = np.insert(np.array(temp_imaginary), 0, temp_real)
+                        tempPayload_path = self.groups[i].payloads[j].GetPath()
+                        tempPayload = RigidPrimView(
+                            f"{tempPayload_path}",
+                            reset_xform_properties=False,
+                            track_contact_forces=False
+                        )
+                        current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
+
                         _payload = DisconnectedPayload(
                             payload.type,
                             payload.detail().target_pos,
-                            torch.FloatTensor(temp_pos).to(device=self.device),
-                            torch.FloatTensor(orient).to(device=self.device)
+                            current_payload_pos.squeeze(axis=0),
+                            current_payload_rot.squeeze(axis=0)
                         )
                         payloads.append(_payload)
                 if group_snapshot.stage == Stage.TRANSPORT:
@@ -243,32 +222,26 @@ class Logistics(IsaacEnv):
                             joint_vel.squeeze(axis=0)
                         ))
                     else:
-                        # payloads.append(payload)
-                        world_transform_matrix = get_world_transform_matrix(self.groups[i].payloads[j])
-                        temp_pos = world_transform_matrix.ExtractTranslation()
-                        temp_quatd = world_transform_matrix.ExtractRotationQuat()
-                        temp_imaginary = temp_quatd.imaginary
-                        temp_real = temp_quatd.real
+                        tempPayload_path = self.groups[i].payloads[j].GetPath()
+                        tempPayload = RigidPrimView(
+                            f"{tempPayload_path}",
+                            reset_xform_properties=False,
+                            track_contact_forces=False
+                        )
+                        current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
+
                         if j < group_snapshot.target_payload_idx:
-                            if payload.detail().name == "D1":
-                                temp_pos[2] = 0.05 + j * 0.3 + j * 0.07
-                            elif payload.detail().name == "D1_s":
-                                temp_pos[2] = 0.0125 + j * 0.225 + j * 0.07
-                            elif payload.detail().name == "A1" or payload.detail().name == "B1":
-                                temp_pos[2] = 0.1 + j * 0.4 + j * 0.07
-                            elif payload.detail().name == "A2" or payload.detail().name == "B2":
-                                temp_pos[2] = 0.0625 + j * 0.325 + j * 0.07
-                            temp_imaginary[0] = 0
-                            temp_imaginary[1] = 0
-                            temp_imaginary[2] = 0
-                            temp_real = 1.0
-                        orient = np.insert(np.array(temp_imaginary), 0, temp_real)
-                        payloads.append(DisconnectedPayload(
+                            current_payload_rot[0][0] = 0
+                            current_payload_rot[0][1] = 0
+                            current_payload_rot[0][2] = 0
+
+                        _payload = DisconnectedPayload(
                             payload.type,
                             payload.detail().target_pos,
-                            torch.FloatTensor(temp_pos).to(device=self.device),
-                            torch.FloatTensor(orient).to(device=self.device)
-                        ))
+                            current_payload_pos.squeeze(axis=0),
+                            current_payload_rot.squeeze(axis=0)
+                        )
+                        payloads.append(_payload)
 
             group_snapshot = GroupSnapshot(
                 drone_pos,
@@ -585,7 +558,7 @@ class Logistics(IsaacEnv):
         drone_pdist = torch.vmap(off_diag)(torch.norm(relative_pos, dim=-1, keepdim=True))
         relative_pos = torch.vmap(off_diag)(relative_pos)
 
-        print(relative_pos)
+        # print(relative_pos)
 
         obs_others = torch.cat([
             relative_pos,
