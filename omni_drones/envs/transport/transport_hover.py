@@ -116,8 +116,8 @@ class TransportHover(IsaacEnv):
             torch.as_tensor(payload_mass_scale[1] * self.drone.MASS_0.sum(), device=self.device)
         )
         self.init_pos_dist = D.Uniform(
-            torch.tensor([-6, -6, 1.], device=self.device),
-            torch.tensor([6., 6., 5.], device=self.device)
+            torch.tensor([-25, -25, 1.], device=self.device),
+            torch.tensor([25., 25., 5.], device=self.device)
         )
         self.init_rpy_dist = D.Uniform(
             torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
@@ -128,6 +128,10 @@ class TransportHover(IsaacEnv):
         self.last_distance = torch.zeros(self.num_envs, 1, device=self.device)
 
         self.alpha = 0.8
+
+        self.init_distance = torch.zeros(self.num_envs, device=self.device)
+        self.init_heading_distance = torch.zeros(self.num_envs, device=self.device)
+        self.distance_margin = 0.1 * torch.ones((self.num_envs, 1), device=self.device)
 
     def _design_scene(self):
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
@@ -141,7 +145,8 @@ class TransportHover(IsaacEnv):
         DynamicCuboid(
             "/World/envs/env_0/payloadTargetVis",
             translation=torch.tensor([0., 0., 2.5]),
-            scale=torch.tensor([0.75, 0.5, 0.2]),
+            scale=torch.tensor([0.6, 0.9, 0.3]),  # D1
+            # scale=torch.tensor([0.4, 0.4, 0.3]),  # A1
             color=torch.tensor([0.8, 0.1, 0.1]),
             size=2.01,
         )
@@ -154,7 +159,7 @@ class TransportHover(IsaacEnv):
             disable_gravity=True
         )
 
-        self.group.spawn(translations=[(0, 0, 2.5)], enable_collision=False)
+        self.group.spawn(translations=[(0, 0, 2.5)], enable_collision=False, payload_name="D1")
         return ["/World/defaultGroundPlane"]
 
     def _set_specs(self):
@@ -251,6 +256,16 @@ class TransportHover(IsaacEnv):
         ], dim=-1).norm(dim=-1, keepdim=True)
         self.last_distance[env_ids] = distance
 
+        init_distance = (self.payload_target_pos - pos) ** 2
+        init_distance = torch.sum(init_distance, dim=-1)
+        init_distance = torch.sqrt(init_distance + 1e-6)
+        self.init_distance[env_ids] = init_distance
+
+        init_heading_distance = (payload_target_heading - heading) ** 2
+        init_heading_distance = torch.sum(init_heading_distance, dim=-1)
+        init_heading_distance = torch.sqrt(init_heading_distance + 1e-6)
+        self.init_heading_distance[env_ids] = init_heading_distance
+
     def _pre_sim_step(self, tensordict: TensorDictBase):
         actions = tensordict[("agents", "action")]
         self.effort = self.drone.apply_action(actions)
@@ -271,10 +286,10 @@ class TransportHover(IsaacEnv):
         payload_drone_rpos = self.payload_pos.unsqueeze(1) - drone_pos
 
         self.target_payload_rpose = torch.cat([
-            self.payload_target_pos - self.payload_pos,
-            self.payload_target_heading - self.payload_heading
-        ], dim=-1)
-        
+            self.payload_target_pos - self.payload_pos,  # ([3]) - ([100, 3]) --> ([100, 3])
+            self.payload_target_heading - self.payload_heading  # ([100, 3]) - ([100, 3]) --> ([100, 3])
+        ], dim=-1)  # --> ([100, 6])
+
         payload_state = [
             self.target_payload_rpose,
             self.payload_rot,  # 4
@@ -321,12 +336,23 @@ class TransportHover(IsaacEnv):
             self.group.get_joint_positions()[..., :16]
             / self.group.joint_limits[..., :16, 0].abs()
         )
-        
-        distance = torch.norm(self.target_payload_rpose, dim=-1, keepdim=True)
-        separation = self.drone_pdist.min(dim=-2).values.min(dim=-2).values
 
         reward = torch.zeros(self.num_envs, self.drone.n, 1, device=self.device)
-        reward_pose = torch.exp(-distance * self.reward_distance_scale)
+        separation = self.drone_pdist.min(dim=-2).values.min(dim=-2).values
+
+        curr_distance = (self.payload_target_pos - self.payload_pos) ** 2
+        curr_distance = torch.sum(curr_distance, dim=-1)
+        curr_distance = torch.sqrt(curr_distance + 1e-6)  # ([100])
+        pos_distance_ratio = 1 - 1 * curr_distance / self.init_distance  # ([100])
+        pos_distance_ratio = pos_distance_ratio.view(-1, 1)
+
+        curr_heading_distance = (self.payload_target_heading - self.payload_heading) ** 2
+        curr_heading_distance = torch.sum(curr_heading_distance, dim=-1)
+        curr_heading_distance = torch.sqrt(curr_heading_distance + 1e-6)  # ([100])
+        heading_distance_ratio = 1 / (curr_heading_distance + 1)
+        heading_distance_ratio = heading_distance_ratio.view(-1, 1)
+
+        goal_reward = 5 * (curr_distance.view(-1, 1) <= self.distance_margin)
 
         up = self.payload_up[:, 2]
         reward_up = torch.square((up + 1) / 2).unsqueeze(-1)
@@ -344,9 +370,20 @@ class TransportHover(IsaacEnv):
         reward_action_smoothness = self.reward_action_smoothness_weight * -self.drone.throttle_difference
         
         reward[:] = (
-            reward_separation * (
-                reward_pose 
-                + reward_pose * (reward_up + reward_spin + reward_swing) 
+                reward_separation * (
+                # 1 * reward_pose
+                # + reward_pose * (reward_up + reward_spin + reward_swing)
+
+                # 2024.10.29 이 리워드 잘 됨.  --> trial0으로 표기함.
+                # 5 * pos_distance_ratio
+                # + 3 * heading_distance_ratio
+                # + 1 * (reward_up + reward_spin + reward_swing)
+
+                goal_reward  # 최종
+                + 5 * pos_distance_ratio
+                + 3 * heading_distance_ratio
+                + 1 * (reward_up + reward_spin + reward_swing)
+
                 + reward_joint_limit
                 + reward_action_smoothness.mean(1, True)
                 + reward_effort
