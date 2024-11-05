@@ -64,6 +64,7 @@ def init_wandb(cfg):
     Otherwise, start a fresh new run.
 
     """
+
     wandb_cfg = cfg.wandb
     time_str = datetime.datetime.now().strftime("%m-%d_%H-%M")
     run_name = f"{wandb_cfg.run_name}/{time_str}"
@@ -80,6 +81,7 @@ def init_wandb(cfg):
         kwargs["resume"] = "must"
     else:
         kwargs["id"] = wandb.util.generate_id()
+    wandb.login(key='38d70fff037ff9d077d2578011b4ec3279b35be6') # yisak personal api key
     run = wandb.init(**kwargs)
     cfg_dict = dict_flatten(OmegaConf.to_container(cfg))
     run.config.update(cfg_dict)
