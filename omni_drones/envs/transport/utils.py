@@ -75,8 +75,8 @@ class TransportationGroup(RobotBase):
         enable_collision: bool = False,
         drone_translations_origin = None,
         orientations = None,
-        payload_usd = Payload.CA1.value.usd_path,
-        payload_scale = Payload.CA1.value.scale,
+        payload_usd = Payload.A1.value.usd_path,
+        payload_scale = Payload.A1.value.scale,
         name = None
     ):
 
@@ -124,47 +124,47 @@ class TransportationGroup(RobotBase):
                 drone_translations = drone_translations_origin
             else:
                 if self.num_drones == 4:
-                    if name=="D1" or name=="CC1" or name is None:
+                    if name=="D1" or name=="CC1" or name is None:   # did
                         drone_translations = torch.tensor([
                             [0.6, 0.9, 0.45],
                             [0.6, -0.9, 0.45],
                             [-0.6, -0.9, 0.45],
                             [-0.6, 0.9, 0.45],
                         ])
-                    elif name=="D1_s" or name=="CC2":
+                    elif name=="D1_s" or name=="CC2":   # did
                         drone_translations = torch.tensor([
-                            [0.45, 0.675, 0.375],
-                            [0.45, -0.675, 0.375],
-                            [-0.45, -0.675, 0.375],
-                            [-0.45, 0.675, 0.375],
+                            [0.3, 0.45, 0.175],
+                            [0.3, -0.45, 0.175],
+                            [-0.3, -0.45, 0.175],
+                            [-0.3, 0.45, 0.175],
                         ])
-                    elif name=="A1" or name=="CA1":
+                    elif name=="A1" or name=="CA1": # did
                         drone_translations = torch.tensor([
-                            [0.4, 0.4, 0.65],
-                            [0.4, -0.4, 0.65],
-                            [-0.4, -0.4, 0.65],
-                            [-0.4, 0.4, 0.65],
+                            [0.5, 0.5, 0.9],
+                            [0.5, -0.5, 0.9],
+                            [-0.5, -0.5, 0.9],
+                            [-0.5, 0.5, 0.9],
                         ])
-                    elif name=="A2" or name=="CA2":
+                    elif name=="A2" or name=="CA2": # did
                         drone_translations = torch.tensor([
-                            [0.325, 0.325, 0.575],
-                            [0.325, -0.325, 0.575],
-                            [-0.325, -0.325, 0.575],
-                            [-0.325, 0.325, 0.575],
+                            [0.25, 0.25, 0.4],
+                            [0.25, -0.25, 0.4],
+                            [-0.25, -0.25, 0.4],
+                            [-0.25, 0.25, 0.4],
                         ])
-                    elif name=="B1" or name=="CB1":
+                    elif name=="B1" or name=="CB1": # did
                         drone_translations = torch.tensor([
-                            [0.4, 0.8, 0.65],
-                            [0.4, -0.8, 0.65],
-                            [-0.4, -0.8, 0.65],
-                            [-0.4, 0.8, 0.65],
+                            [0.5, 1.0, 0.88],
+                            [0.5, -1.0, 0.88],
+                            [-0.5, -1.0, 0.88],
+                            [-0.5, 1.0, 0.88],
                         ])
-                    elif name=="B2" or name=="CB2":
+                    elif name=="B2" or name=="CB2": #did
                         drone_translations = torch.tensor([
-                            [0.325, 0.65, 0.575],
-                            [0.325, -0.65, 0.575],
-                            [-0.325, -0.65, 0.575],
-                            [-0.325, 0.65, 0.575],
+                            [0.25, 0.5, 0.4],
+                            [0.25, -0.5, 0.4],
+                            [-0.25, -0.5, 0.4],
+                            [-0.25, 0.5, 0.4],
                         ])
                 elif self.num_drones == 6:
                     drone_translations = torch.tensor([
