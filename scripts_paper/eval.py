@@ -37,7 +37,7 @@ algos = {
 }
 
 transport_checkpoint_D1 = "./transport_D1_retrain_0924_checkpoint_2000.pt"
-transport_checkpoint_A1 = './transport_A1_retrain_0924_checkpoint_2000.pt'
+transport_checkpoint_A1 = './checkpoint_final_A1.pt'
 formation_checkpoint_squre = "./checkpoint_long.pt"
 formation_checkpoint_long = "./formation_checkpoint_square.pt"
 

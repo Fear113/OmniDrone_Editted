@@ -83,7 +83,7 @@ class Logistics(IsaacEnv):
         self.payload_offset = self.make_payload_offset()
         self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
         self.done_group = None
-        self.done_payloads = {payload.name:0 for payload in Payload}
+        self.done_payloads = self.initial_state.done_payloads
 
         super().__init__(cfg, headless)
 
@@ -140,7 +140,7 @@ class Logistics(IsaacEnv):
                             temp_quatd = world_transform_matrix.ExtractRotationQuat()
                             orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
                             target_pos = payload.detail().target_pos
-                            target_pos = (target_pos[0], target_pos[1], self.done_payloads[payload.detail().name] * 0.5 + 1)
+                            target_pos = (target_pos[0], target_pos[1], self.done_payloads[payload.detail().name] * 1.0 + 1)
                             _payload = ConnectedPayload(
                                 payload.type,
                                 target_pos,
@@ -156,10 +156,12 @@ class Logistics(IsaacEnv):
                             vel = self.groups[i].transport.get_velocities(True)
                             joint_pos = self.groups[i].transport.get_joint_positions(True)
                             joint_vel = self.groups[i].transport.get_joint_velocities(True)
+                            target_pos = payload.detail().target_pos
+                            target_pos = (target_pos[0], target_pos[1], self.done_payloads[payload.detail().name] * 1.0 + 1)
 
                             payloads.append(ConnectedPayload(
                                 payload.type,
-                                payload.detail().target_pos,
+                                target_pos,
                                 pos.squeeze(axis=0),
                                 rot.squeeze(axis=0),
                                 vel.squeeze(axis=0),
@@ -255,7 +257,7 @@ class Logistics(IsaacEnv):
 
             group_snapshots.append(group_snapshot)
 
-        return StateSnapshot(group_snapshots)
+        return StateSnapshot(group_snapshots, self.done_payloads)
 
     def make_group_offset(self):
         group_interval = 7
@@ -314,8 +316,8 @@ class Logistics(IsaacEnv):
             groups.append(
                 GroupSnapshot(drone_pos, drone_rot, drone_vel, target_payload_idx, stage, count, payloads)
             )
-
-        return StateSnapshot(groups)
+        done_payloads = {payload.name: 0 for payload in Payload}
+        return StateSnapshot(groups, done_payloads)
 
     def _design_scene(self) -> Optional[List[str]]:
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
@@ -654,7 +656,7 @@ class Logistics(IsaacEnv):
                 terminated = (self.count[i] > 70)
             elif group_snapshot.stage == Stage.PRE_TRANSPORT:
                 self.count[i] += 1
-                terminated = (self.count[i] > 100)
+                terminated = (self.count[i] > 150)
             elif group_snapshot.stage == Stage.TRANSPORT:
                 payload = self.groups[i].transport.payload_view
                 payload_target_heading = torch.zeros(1, 3, device=self.device)
@@ -663,7 +665,7 @@ class Logistics(IsaacEnv):
                 payload_heading: torch.Tensor = quat_axis(payload_rot, axis=0)
 
                 payload = group_snapshot.payloads[group_snapshot.target_payload_idx]
-                payload_target_pos = torch.tensor(payload.detail().target_pos, device=self.device)
+                payload_target_pos = torch.tensor(payload.target_pos, device=self.device)
 
                 target_payload_rpose = torch.cat([
                     payload_target_pos - payload_pos,
@@ -671,9 +673,9 @@ class Logistics(IsaacEnv):
 
                 p_distance = torch.norm(target_payload_rpose, dim=-1, keepdim=True)
 
-                if p_distance < 1.33:
+                if p_distance < 1.002:
                     self.count[i] += 1
-                terminated = (self.count[i] > 49)
+                terminated = (self.count[i] > 5)
             else:
                 raise NotImplementedError
 
