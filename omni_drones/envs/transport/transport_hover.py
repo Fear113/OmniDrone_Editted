@@ -159,7 +159,7 @@ class TransportHover(IsaacEnv):
             disable_gravity=True
         )
 
-        self.group.spawn(translations=[(0, 0, 2.5)], enable_collision=False, payload_name="D1")
+        self.group.spawn(translations=[(0, 0, 2.5)], enable_collision=False)
         return ["/World/defaultGroundPlane"]
 
     def _set_specs(self):
