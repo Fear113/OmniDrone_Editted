@@ -140,7 +140,7 @@ class Logistics(IsaacEnv):
                             temp_quatd = world_transform_matrix.ExtractRotationQuat()
                             orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
                             target_pos = payload.detail().target_pos
-                            target_pos = (target_pos[0], target_pos[1], self.done_payloads[payload.detail().name] * 1.0 + 1)
+                            target_pos = (target_pos[0] + self.done_payloads[payload.detail().name] * 3.0, target_pos[1], target_pos[2])
                             _payload = ConnectedPayload(
                                 payload.type,
                                 target_pos,
@@ -157,7 +157,7 @@ class Logistics(IsaacEnv):
                             joint_pos = self.groups[i].transport.get_joint_positions(True)
                             joint_vel = self.groups[i].transport.get_joint_velocities(True)
                             target_pos = payload.detail().target_pos
-                            target_pos = (target_pos[0], target_pos[1], self.done_payloads[payload.detail().name] * 1.0 + 1)
+                            target_pos = (target_pos[0] + self.done_payloads[payload.detail().name] * 3.0, target_pos[1], target_pos[2])
 
                             payloads.append(ConnectedPayload(
                                 payload.type,
@@ -260,7 +260,7 @@ class Logistics(IsaacEnv):
         return StateSnapshot(group_snapshots, self.done_payloads)
 
     def make_group_offset(self):
-        group_interval = 7
+        group_interval = 10
         group_offset = torch.zeros(self.num_groups, 3, device=self.device)
         group_offset[:, 0] = torch.arange(start=0, end=-(group_interval * self.num_groups), step=-group_interval,
                                           device=self.device)
@@ -287,8 +287,10 @@ class Logistics(IsaacEnv):
 
         groups = []
         payload_type = torch.zeros(self.num_groups, self.num_payloads_per_group)
-        for i in range(self.num_groups):
-            payload_type[i] = torch.randperm(Payload.__len__())[:self.num_payloads_per_group]
+        # for i in range(self.num_groups):
+        #     payload_type[i] = torch.randperm(Payload.__len__())[:self.num_payloads_per_group]
+        payload_type[0] = torch.tensor([0,2,4])
+        payload_type[1] = torch.tensor([4,0,2])
 
         for i in range(self.num_groups):
             drone_pos = self.formation + self.group_offset[i]
