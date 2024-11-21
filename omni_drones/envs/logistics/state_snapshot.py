@@ -53,3 +53,4 @@ class GroupSnapshot:
 @dataclass
 class StateSnapshot:
     group_snapshots: list[GroupSnapshot]
+    done_payloads: dict[str, int]

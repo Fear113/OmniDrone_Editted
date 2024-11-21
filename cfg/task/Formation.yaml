@@ -8,14 +8,14 @@ defaults:
 
 env: 
   num_envs: 150
-  max_episode_length: 600
-  env_spacing: 40
+  max_episode_length: 2000
+  env_spacing: 70
 
 drone_model: Hummingbird
 force_sensor: false
 time_encoding: true
 
-safe_distance: 0.2
+safe_distance: 0.1
 formation: squre #hexagon # tetragon
 
 flatten_state: false

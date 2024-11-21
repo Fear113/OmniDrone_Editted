@@ -95,44 +95,86 @@ FORMATIONS = {
 }
 
 FORMATION_A1 = [ # 정육면체 
-    [0.35,0.35,0.9],
-    [0.35,-0.35,0.9],
-    [-0.35,0.35,0.9],
-    [-0.35,-0.35,0.9]
+    [0.48,0.48,0.9],
+    [0.48,-0.48,0.9],
+    [-0.48,0.48,0.9],
+    [-0.48,-0.48,0.9]
 ]
 
-FORMATION_A2 = [ # 정육면체, 좀 더 작음
-    [0.33,0.33,0.8],
-    [0.33,-0.33,0.8],
-    [-0.33,0.33,0.8],
-    [-0.33,-0.33,0.8]
+FORMATION_A2 = [ # 정육면체, 좀 더 작음. 지나치게 딱 달라붙어있어 학습에 어려움이 있지 않을까 걱정을 하고있긴 함. 
+    [0.25,0.25,0.5],
+    [0.25,-0.25,0.5],
+    [-0.25,0.25,0.5],
+    [-0.25,-0.25,0.5]
 ]
 FORMATION_B1 = [ # 직육면체, 정육면체 2개를 이어붙인 구조
-    [0.35, 0.70, 0.9],
-    [0.35, -0.70, 0.9],
-    [-0.35, 0.70, 0.9],
-    [-0.35, -0.70, 0.9]
+    [0.48, 0.96, 0.9],
+    [0.48, -0.96, 0.9],
+    [-0.48, 0.96, 0.9],
+    [-0.48, -0.96, 0.9]
 ]
 FORMATION_B2 = [ # 직육면체, 정육면체 2개를 이어붙인 구조. 좀 더 작음
-    [0.33, 0.66, 0.8],
-    [0.33, -0.66, 0.8],
-    [-0.33, 0.66, 0.8],
-    [-0.33, -0.66, 0.8]
+    [0.25, 0.50, 0.5],
+    [0.25, -0.50, 0.5],
+    [-0.25, 0.50, 0.5],
+    [-0.25, -0.50, 0.5]
 ]
 FORMATION_D1 = [ # 직육면체, 정육면체 6개를 이어붙인 구조. 
-    [0.55, 0.85, 0.85],
-    [0.55, -0.85, 0.85],
-    [-0.55, 0.85, 0.85],
-    [-0.55, -0.85, 0.85]
+    [0.55, 0.85, 0.6],
+    [0.55, -0.85, 0.6],
+    [-0.55, 0.85, 0.6],
+    [-0.55, -0.85, 0.6]
 ]
 FORMATION_D1_S = [ #직육면체, 정육면체 6개를 이어붙인 구조. 좀 더 작음. 
-    [0.45, 0.7, 0.75],
-    [0.45, -0.7, 0.75],
-    [-0.45, 0.7, 0.75],
-    [-0.45, -0.7, 0.75]
+    [0.2, 0.4, 0.1],
+    [0.2, -0.4, 0.1],
+    [-0.2, 0.4, 0.1],
+    [-0.2, -0.4, 0.1]
 ]
+### Belows are old formations for cardbox. Please remain this formations. 
+# FORMATION_CA1 = [ #직육면체 
+#     [0.45, 0.4, 0.75],
+#     [0.45, -0.4, 0.75],
+#     [-0.45, 0.4, 0.75],
+#     [-0.45, -0.4, 0.75]
+# ]
+
+# FORMATION_CA2 = [ #직육면체 
+#     [0.4, 0.35, 0.6],
+#     [0.4, -0.35, 0.6],
+#     [-0.4, 0.35, 0.6],
+#     [-0.4, -0.35, 0.6]
+# ]
+
+# FORMATION_CB1 = [ #직육면체 (세로)
+#     [0.35, 0.7, 0.85],
+#     [0.35, -0.7, 0.85],
+#     [-0.35, 0.7, 0.85],
+#     [-0.35, -0.7, 0.85]
+# ]
 
 
+# FORMATION_CB2 = [ #직육면체 (세로) 너무 딱 붙어있어야 하는 구조가 나와서 살짝 힘들듯 하다. 그래서 모양이 안맞더라도 좀 떨어지게 해놨음. 원래는 0.3이 아닌, 0.25여야함. 
+#     [0.3, 0.6, 0.7],
+#     [0.3, -0.6, 0.7],
+#     [-0.3, 0.6, 0.7],
+#     [-0.3, -0.6, 0.7]
+# ]
+
+
+# FORMATION_CC1 = [ #직육면체 (세로, 낮음)
+#     [0.6, 0.8, 0.7],
+#     [0.6, -0.8, 0.7],
+#     [-0.6, 0.8, 0.7],
+#     [-0.6, -0.8, 0.7]
+# ]
+
+# FORMATION_CC2 = [ #직육면체 (세로, 낮음)
+#     [0.45, 0.6, 0.5],
+#     [0.45, -0.6, 0.5],
+#     [-0.45, 0.6, 0.5],
+#     [-0.45, -0.6, 0.5]
+# ]
 
 MYFORMATION = np.array([
     FORMATION_A1, FORMATION_A2, FORMATION_B1, FORMATION_B2, FORMATION_D1, FORMATION_D1_S
@@ -179,10 +221,20 @@ class Formation(IsaacEnv):
 
         # initial state distribution
         self.cells = (
-            make_cells([-12, -12, 0.25], [12, 1, 2], [1.0, 1.0, 0.25])
+            make_cells([-25, -25, 0.25], [25, 25, 3], [5.0, 5.0, 0.25])
             .flatten(0, -2)
             .to(self.device)
         )
+
+        self.middle_pos_dist = D.Uniform(
+            torch.tensor([-20, -20, 1.0], device=self.device),
+            torch.tensor([20, 20, 2.5], device=self.device)
+        )
+        self.spead_pos_dist = D.Uniform(
+            torch.tensor([-5, -5, -0.5], device=self.device),
+            torch.tensor([5, 5, 0.5], device=self.device)
+        )
+
         # to default
         self.init_rpy_dist = D.Uniform(
             torch.tensor([-.2, -.2, 0.], device=self.device) * torch.pi,
@@ -236,8 +288,9 @@ class Formation(IsaacEnv):
         
         
         ######## Please remain below comments. It will use again after adding payload types.
-        # USD_PATH = list(PayloadList)[5].value.usd_path
-        # SCALE = list(PayloadList)[5].value.scale
+        # index = 5
+        # USD_PATH = list(Payload)[index].value.usd_path
+        # SCALE = list(Payload)[index].value.scale
         # payload_rpy_dist = D.Uniform(
         #     torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
         #     torch.tensor([0., 0., 0.], device=self.device) * torch.pi
@@ -251,7 +304,7 @@ class Formation(IsaacEnv):
 
         # DynamicSphere(
         # "/World/envs/env_0/goal1",
-        # translation=torch.tensor(MYFORMATION[5][0]),
+        # translation=torch.tensor(MYFORMATION[index][0]),
         # color=torch.tensor([1.0, 0.2, 0.2]),
         # radius=0.3,
         # mass=0.1,
@@ -259,7 +312,7 @@ class Formation(IsaacEnv):
 
         # DynamicSphere(
         # "/World/envs/env_0/goal2",
-        # translation=torch.tensor(MYFORMATION[5][1]),
+        # translation=torch.tensor(MYFORMATION[index][1]),
         # color=torch.tensor([1.0, 0.2, 0.2]),
         # radius=0.3,
         # mass=0.1,
@@ -267,7 +320,7 @@ class Formation(IsaacEnv):
 
         # DynamicSphere(
         # "/World/envs/env_0/goal3",
-        # translation=torch.tensor(MYFORMATION[5][2]),
+        # translation=torch.tensor(MYFORMATION[index][2]),
         # color=torch.tensor([1.0, 0.2, 0.2]),
         # radius=0.3,
         # mass=0.1,
@@ -275,7 +328,7 @@ class Formation(IsaacEnv):
 
         # DynamicSphere(
         # "/World/envs/env_0/goal4",
-        # translation=torch.tensor(MYFORMATION[5][3]),
+        # translation=torch.tensor(MYFORMATION[index][3]),
         # color=torch.tensor([1.0, 0.2, 0.2]),
         # radius=0.3,
         # mass=0.1,
@@ -393,7 +446,7 @@ class Formation(IsaacEnv):
         self.drone._reset_idx(env_ids)
         payloadIndex = np.random.randint(len(Payload), size=len(env_ids))
         # payloadIndex = np.random.randint(1,size=len(env_ids))
-        # payloadIndex = 1
+        # payloadIndex = 6
         payloadOneHot = np.zeros((len(env_ids),len(Payload)))
         payloadOneHot[np.arange(len(payloadOneHot)), payloadIndex] = 1
         self.envOneHot[env_ids] = torch.FloatTensor(payloadOneHot).to(self.device)
@@ -405,10 +458,11 @@ class Formation(IsaacEnv):
         
         if (self.formation[:,:,2] > 2).any():
             print("hi")
-
-        pos = torch.vmap(sample_from_grid, randomness="different")(
-            self.cells.expand(len(env_ids), *self.cells.shape), n=self.drone.n
-        ) + self.envs_positions[env_ids].unsqueeze(1)
+        middle_point = self.middle_pos_dist.sample(env_ids.shape)
+        pos = middle_point.repeat(4,1,1).transpose(0,1) + self.spead_pos_dist.sample(torch.tensor([env_ids.shape[0]*4])).reshape(env_ids.shape[0],4,3) + self.envs_positions[env_ids].unsqueeze(1)
+        # pos = torch.vmap(sample_from_grid, randomness="different")(
+        #     self.cells.expand(len(env_ids), *self.cells.shape), n=self.drone.n
+        # ) + self.envs_positions[env_ids].unsqueeze(1)
         rpy = self.init_rpy_dist.sample((*env_ids.shape, self.drone.n))
         rot = euler_to_quaternion(rpy)
         vel = torch.zeros(len(env_ids), self.drone.n, 6, device=self.device)
@@ -501,7 +555,7 @@ class Formation(IsaacEnv):
         truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1)
         crash = (pos[..., 2] < 0.2).any(-1, keepdim=True)
 
-        terminated = crash | (separation<0.23)
+        terminated = crash | (separation<0.1)
 
         self.stats["return"].add_(reward)
         self.stats["episode_len"][:] = self.progress_buf.unsqueeze(-1)

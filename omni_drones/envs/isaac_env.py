@@ -44,6 +44,7 @@ from omni_drones.robots.robot import RobotBase
 from omni_drones.utils.torchrl import AgentSpec
 
 from omni.isaac.debug_draw import _debug_draw
+import omni.isaac.core.utils.prims as prims_utils
 
 class DebugDraw:
     def __init__(self):

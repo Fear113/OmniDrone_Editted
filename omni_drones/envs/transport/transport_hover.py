@@ -36,6 +36,7 @@ from omni_drones.views import RigidPrimView
 from omni_drones.utils.torch import cpos, off_diag, others, quat_axis
 from omni_drones.robots.drone import MultirotorBase
 
+from omni_drones.utils.payload import Payload
 from .utils import TransportationGroup, TransportationCfg
 
 
@@ -116,18 +117,26 @@ class TransportHover(IsaacEnv):
             torch.as_tensor(payload_mass_scale[1] * self.drone.MASS_0.sum(), device=self.device)
         )
         self.init_pos_dist = D.Uniform(
-            torch.tensor([-6, -6, 1.], device=self.device),
-            torch.tensor([6., 6., 5.], device=self.device)
+            torch.tensor([-20, -20, 0.5], device=self.device),
+            torch.tensor([20., 20., 5.], device=self.device)
         )
         self.init_rpy_dist = D.Uniform(
             torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
             torch.tensor([0., 0., 2.], device=self.device) * torch.pi
         )
-        self.payload_target_pos = torch.tensor([0., 0., 2.5], device=self.device)
+        self.height_dist = D.Uniform(
+            torch.tensor([0., 0., 0.5], device=self.device),
+            torch.tensor([0., 0., 5.], device=self.device)
+        )
+        self.payload_target_pos = torch.zeros((self.num_envs,3), device=self.device)
         self.payload_target_heading = torch.zeros(self.num_envs, 3, device=self.device)
         self.last_distance = torch.zeros(self.num_envs, 1, device=self.device)
 
         self.alpha = 0.8
+
+        self.init_distance = torch.zeros(self.num_envs, device=self.device)
+        self.init_heading_distance = torch.zeros(self.num_envs, device=self.device)
+        self.distance_margin = 0.1 * torch.ones((self.num_envs, 1), device=self.device)
 
     def _design_scene(self):
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
@@ -154,7 +163,7 @@ class TransportHover(IsaacEnv):
             disable_gravity=True
         )
 
-        self.group.spawn(translations=[(0, 0, 2.5)], enable_collision=False)
+        self.group.spawn(translations=[(0, 0, 2.5)], enable_collision=False, name='D1', payload_usd=Payload.D1.value.usd_path, payload_scale = Payload.D1.value.scale)
         return ["/World/defaultGroundPlane"]
 
     def _set_specs(self):
@@ -220,6 +229,7 @@ class TransportHover(IsaacEnv):
     def _reset_idx(self, env_ids: torch.Tensor):
         pos = self.init_pos_dist.sample(env_ids.shape)
         rpy = self.init_rpy_dist.sample(env_ids.shape)
+        self.payload_target_pos[env_ids,2] = self.height_dist.sample(env_ids.shape)[:,2]
         rot = euler_to_quaternion(rpy)
         heading = quat_axis(rot, 0)
 
@@ -246,10 +256,21 @@ class TransportHover(IsaacEnv):
         self.info["payload_mass"][env_ids] = payload_masses.unsqueeze(-1).clone()
         self.stats[env_ids] = 0.
         distance = torch.cat([
-            self.payload_target_pos-pos,
+            self.payload_target_pos[env_ids]-pos,
             payload_target_heading-heading,
         ], dim=-1).norm(dim=-1, keepdim=True)
         self.last_distance[env_ids] = distance
+
+        init_distance = (self.payload_target_pos[env_ids] - pos) ** 2
+        init_distance = torch.sum(init_distance, dim=-1)
+        init_distance = torch.sqrt(init_distance + 1e-6)
+        self.init_distance[env_ids] = init_distance
+        # print("self.init_distance", self.init_distance)  # ([100])
+
+        init_heading_distance = (payload_target_heading - heading) ** 2
+        init_heading_distance = torch.sum(init_heading_distance, dim=-1)
+        init_heading_distance = torch.sqrt(init_heading_distance + 1e-6)
+        self.init_heading_distance[env_ids] = init_heading_distance
 
     def _pre_sim_step(self, tensordict: TensorDictBase):
         actions = tensordict[("agents", "action")]
@@ -318,15 +339,37 @@ class TransportHover(IsaacEnv):
     def _compute_reward_and_done(self):
         vels = self.payload.get_velocities()
         joint_positions = (
-            self.group.get_joint_positions()[..., :16]
-            / self.group.joint_limits[..., :16, 0].abs()
+                self.group.get_joint_positions()[..., :16]
+                / self.group.joint_limits[..., :16, 0].abs()
         )
-        
-        distance = torch.norm(self.target_payload_rpose, dim=-1, keepdim=True)
-        separation = self.drone_pdist.min(dim=-2).values.min(dim=-2).values
+
+        # self.target_payload_rpose = torch.cat([
+        #     self.payload_target_pos - self.payload_pos,
+        #     self.payload_target_heading - self.payload_heading
+        # ], dim=-1)
 
         reward = torch.zeros(self.num_envs, self.drone.n, 1, device=self.device)
-        reward_pose = torch.exp(-distance * self.reward_distance_scale)
+        separation = self.drone_pdist.min(dim=-2).values.min(dim=-2).values
+
+        curr_distance = (self.payload_target_pos - self.payload_pos) ** 2
+        curr_distance = torch.sum(curr_distance, dim=-1)
+        curr_distance = torch.sqrt(curr_distance + 1e-6)  # ([100])
+        pos_distance_ratio = 1 - 1 * curr_distance / self.init_distance  # ([100])
+        pos_distance_ratio = pos_distance_ratio.view(-1, 1)
+
+        curr_heading_distance = (self.payload_target_heading - self.payload_heading) ** 2
+        curr_heading_distance = torch.sum(curr_heading_distance, dim=-1)
+        curr_heading_distance = torch.sqrt(curr_heading_distance + 1e-6)  # ([100])
+        # curr_heading_distance = curr_heading_distance.view(-1, 1)
+        # heading_distance_ratio = 1 - 1 * curr_heading_distance / self.init_heading_distance  # ([100])
+        heading_distance_ratio = 1 / (curr_heading_distance + 1)
+        heading_distance_ratio = heading_distance_ratio.view(-1, 1)
+
+        distance = torch.norm(self.target_payload_rpose, dim=-1, keepdim=True)
+        # reward_pose = (pos_distance_ratio + heading_distance_ratio) / 2  # torch.exp(-distance * self.reward_distance_scale)
+        reward_pose = 5 * pos_distance_ratio + 5 * heading_distance_ratio  # torch.exp(-curr_heading_distance * self.reward_distance_scale)
+
+        goal_reward = 5 * (curr_distance.view(-1, 1) <= self.distance_margin)
 
         up = self.payload_up[:, 2]
         reward_up = torch.square((up + 1) / 2).unsqueeze(-1)
@@ -342,32 +385,43 @@ class TransportHover(IsaacEnv):
         reward_joint_limit = 0.5 * torch.mean(1 - torch.square(joint_positions), dim=-1)
 
         reward_action_smoothness = self.reward_action_smoothness_weight * -self.drone.throttle_difference
-        
+
         reward[:] = (
-            reward_separation * (
-                reward_pose 
-                + reward_pose * (reward_up + reward_spin + reward_swing) 
+                reward_separation * (
+                # 1 * reward_pose
+                # + reward_pose * (reward_up + reward_spin + reward_swing)
+
+                # 2024.10.29 ì´ ë¦¬ì›Œë“œ ìž˜ ë¨.  --> trial0ìœ¼ë¡œ í‘œê¸°í•¨.
+                # 5 * pos_distance_ratio
+                # + 3 * heading_distance_ratio
+                # + 1 * (reward_up + reward_spin + reward_swing)
+
+                goal_reward  # ìµœì¢…
+                + 6.8 * pos_distance_ratio
+                + 3 * heading_distance_ratio
+                + 1.5 * (reward_up + reward_spin + reward_swing)
+
                 + reward_joint_limit
                 + reward_action_smoothness.mean(1, True)
                 + reward_effort
-            )
+        )
         ).unsqueeze(-1)
 
         done_hasnan = torch.isnan(self.drone_states).any(-1)
         done_fall = self.drone_states[..., 2] < 0.2
 
         done = (
-            (self.progress_buf >= self.max_episode_length).unsqueeze(-1) 
-            | done_fall.any(-1, keepdim=True)
-            | done_hasnan.any(-1, keepdim=True)
+                (self.progress_buf >= self.max_episode_length).unsqueeze(-1)
+                | done_fall.any(-1, keepdim=True)
+                | done_hasnan.any(-1, keepdim=True)
         )
 
         self.stats["return"].add_(reward.mean(1))
         self.stats["episode_len"][:] = self.progress_buf.unsqueeze(-1)
-        self.stats["pos_error"].lerp_(self.pos_error, (1-self.alpha))
-        self.stats["heading_alignment"].lerp_(self.heading_alignment, (1-self.alpha))
-        self.stats["uprightness"].lerp_(self.payload_up[:, 2].unsqueeze(-1), (1-self.alpha))
-        self.stats["action_smoothness"].lerp_(-self.drone.throttle_difference, (1-self.alpha))
+        self.stats["pos_error"].lerp_(self.pos_error, (1 - self.alpha))
+        self.stats["heading_alignment"].lerp_(self.heading_alignment, (1 - self.alpha))
+        self.stats["uprightness"].lerp_(self.payload_up[:, 2].unsqueeze(-1), (1 - self.alpha))
+        self.stats["action_smoothness"].lerp_(-self.drone.throttle_difference, (1 - self.alpha))
         return TensorDict(
             {
                 "agents": {"reward": reward},
@@ -375,4 +429,3 @@ class TransportHover(IsaacEnv):
             },
             self.batch_size,
         )
-

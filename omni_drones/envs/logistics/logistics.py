@@ -83,7 +83,7 @@ class Logistics(IsaacEnv):
         self.payload_offset = self.make_payload_offset()
         self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
         self.done_group = None
-        self.done_payloads = {payload.name:0 for payload in Payload}
+        self.done_payloads = self.initial_state.done_payloads
 
         super().__init__(cfg, headless)
 
@@ -118,30 +118,19 @@ class Logistics(IsaacEnv):
                 for j, payload in enumerate(group_snapshot.payloads):
                     if target_payload_idx == j:
                         if group_snapshot.stage == Stage.FORMATION:
-                            world_transform_matrix = get_world_transform_matrix(self.groups[i].payloads[j])
-                            temp_pos = world_transform_matrix.ExtractTranslation()
-                            temp_quatd = world_transform_matrix.ExtractRotationQuat()
-                            temp_imaginary = temp_quatd.imaginary
-                            temp_real = temp_quatd.real
-                            if j < group_snapshot.target_payload_idx:
-                                if payload.detail().name == "D1":
-                                    temp_pos[2] = 0.05 + j * 0.3 + j * 0.07
-                                elif payload.detail().name == "D1_s":
-                                    temp_pos[2] = 0.0125 + j * 0.225 + j * 0.07
-                                elif payload.detail().name == "A1" or payload.detail().name == "B1":
-                                    temp_pos[2] = 0.1 + j * 0.4 + j * 0.07
-                                elif payload.detail().name == "A2" or payload.detail().name == "B2":
-                                    temp_pos[2] = 0.0625 + j * 0.325 + j * 0.07
-                                temp_imaginary[0] = 0
-                                temp_imaginary[1] = 0
-                                temp_imaginary[2] = 0
-                                temp_real = 1.0
-                            orient = np.insert(np.array(temp_imaginary), 0, temp_real)
+                            tempPayload_path = self.groups[i].payloads[j].GetPath()
+                            tempPayload = RigidPrimView(
+                                f"{tempPayload_path}",
+                                reset_xform_properties=False,
+                                track_contact_forces=False
+                            )
+                            current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
+
                             _payload = DisconnectedPayload(
                                 payload.type,
                                 payload.detail().target_pos,
-                                torch.FloatTensor(temp_pos).to(device=self.device),
-                                torch.FloatTensor(orient).to(device=self.device)
+                                current_payload_pos.squeeze(axis=0),
+                                current_payload_rot.squeeze(axis=0)
                             )
                             payloads.append(_payload)
                         elif group_snapshot.stage == Stage.POST_FORMATION:
@@ -151,7 +140,7 @@ class Logistics(IsaacEnv):
                             temp_quatd = world_transform_matrix.ExtractRotationQuat()
                             orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
                             target_pos = payload.detail().target_pos
-                            target_pos = (target_pos[0], target_pos[1], self.done_payloads[payload.detail().name] * 0.5 + 1)
+                            target_pos = (target_pos[0] + self.done_payloads[payload.detail().name] * 3.0, target_pos[1], target_pos[2])
                             _payload = ConnectedPayload(
                                 payload.type,
                                 target_pos,
@@ -167,10 +156,12 @@ class Logistics(IsaacEnv):
                             vel = self.groups[i].transport.get_velocities(True)
                             joint_pos = self.groups[i].transport.get_joint_positions(True)
                             joint_vel = self.groups[i].transport.get_joint_velocities(True)
+                            target_pos = payload.detail().target_pos
+                            target_pos = (target_pos[0] + self.done_payloads[payload.detail().name] * 3.0, target_pos[1], target_pos[2])
 
                             payloads.append(ConnectedPayload(
                                 payload.type,
-                                payload.detail().target_pos,
+                                target_pos,
                                 pos.squeeze(axis=0),
                                 rot.squeeze(axis=0),
                                 vel.squeeze(axis=0),
@@ -181,6 +172,7 @@ class Logistics(IsaacEnv):
                             self.done_payloads[payload.detail().name] += 1
                             tempPayload = self.groups[i].transport.payload_view
                             current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
+
                             drone_rot = torch.zeros((self.num_drones_per_group, 4), device=self.device)
                             drone_rot[:, 0] = 1
                             drone_vel = torch.zeros((self.num_drones_per_group, 6), device=self.device)
@@ -194,30 +186,19 @@ class Logistics(IsaacEnv):
                         else:
                             raise NotImplementedError
                     else:
-                        world_transform_matrix = get_world_transform_matrix(self.groups[i].payloads[j])
-                        temp_pos = world_transform_matrix.ExtractTranslation()
-                        temp_quatd = world_transform_matrix.ExtractRotationQuat()
-                        temp_imaginary = temp_quatd.imaginary
-                        temp_real = temp_quatd.real
-                        if j < group_snapshot.target_payload_idx:
-                            if payload.detail().name == "D1":
-                                temp_pos[2] = 0.05 + j * 0.3 + j * 0.07
-                            elif payload.detail().name == "D1_s":
-                                temp_pos[2] = 0.0125 + j * 0.225 + j * 0.07
-                            elif payload.detail().name == "A1" or payload.detail().name == "B1":
-                                temp_pos[2] = 0.1 + j * 0.4 + j * 0.07
-                            elif payload.detail().name == "A2" or payload.detail().name == "B2":
-                                temp_pos[2] = 0.0625 + j * 0.325 + j * 0.07
-                            temp_imaginary[0] = 0
-                            temp_imaginary[1] = 0
-                            temp_imaginary[2] = 0
-                            temp_real = 1.0
-                        orient = np.insert(np.array(temp_imaginary), 0, temp_real)
+                        tempPayload_path = self.groups[i].payloads[j].GetPath()
+                        tempPayload = RigidPrimView(
+                            f"{tempPayload_path}",
+                            reset_xform_properties=False,
+                            track_contact_forces=False
+                        )
+                        current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
+
                         _payload = DisconnectedPayload(
                             payload.type,
                             payload.detail().target_pos,
-                            torch.FloatTensor(temp_pos).to(device=self.device),
-                            torch.FloatTensor(orient).to(device=self.device)
+                            current_payload_pos.squeeze(axis=0),
+                            current_payload_rot.squeeze(axis=0)
                         )
                         payloads.append(_payload)
                 if group_snapshot.stage == Stage.TRANSPORT:
@@ -243,32 +224,26 @@ class Logistics(IsaacEnv):
                             joint_vel.squeeze(axis=0)
                         ))
                     else:
-                        # payloads.append(payload)
-                        world_transform_matrix = get_world_transform_matrix(self.groups[i].payloads[j])
-                        temp_pos = world_transform_matrix.ExtractTranslation()
-                        temp_quatd = world_transform_matrix.ExtractRotationQuat()
-                        temp_imaginary = temp_quatd.imaginary
-                        temp_real = temp_quatd.real
+                        tempPayload_path = self.groups[i].payloads[j].GetPath()
+                        tempPayload = RigidPrimView(
+                            f"{tempPayload_path}",
+                            reset_xform_properties=False,
+                            track_contact_forces=False
+                        )
+                        current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
+
                         if j < group_snapshot.target_payload_idx:
-                            if payload.detail().name == "D1":
-                                temp_pos[2] = 0.05 + j * 0.3 + j * 0.07
-                            elif payload.detail().name == "D1_s":
-                                temp_pos[2] = 0.0125 + j * 0.225 + j * 0.07
-                            elif payload.detail().name == "A1" or payload.detail().name == "B1":
-                                temp_pos[2] = 0.1 + j * 0.4 + j * 0.07
-                            elif payload.detail().name == "A2" or payload.detail().name == "B2":
-                                temp_pos[2] = 0.0625 + j * 0.325 + j * 0.07
-                            temp_imaginary[0] = 0
-                            temp_imaginary[1] = 0
-                            temp_imaginary[2] = 0
-                            temp_real = 1.0
-                        orient = np.insert(np.array(temp_imaginary), 0, temp_real)
-                        payloads.append(DisconnectedPayload(
+                            current_payload_rot[0][0] = 0
+                            current_payload_rot[0][1] = 0
+                            current_payload_rot[0][2] = 0
+
+                        _payload = DisconnectedPayload(
                             payload.type,
                             payload.detail().target_pos,
-                            torch.FloatTensor(temp_pos).to(device=self.device),
-                            torch.FloatTensor(orient).to(device=self.device)
-                        ))
+                            current_payload_pos.squeeze(axis=0),
+                            current_payload_rot.squeeze(axis=0)
+                        )
+                        payloads.append(_payload)
 
             group_snapshot = GroupSnapshot(
                 drone_pos,
@@ -282,10 +257,10 @@ class Logistics(IsaacEnv):
 
             group_snapshots.append(group_snapshot)
 
-        return StateSnapshot(group_snapshots)
+        return StateSnapshot(group_snapshots, self.done_payloads)
 
     def make_group_offset(self):
-        group_interval = 7
+        group_interval = 10
         group_offset = torch.zeros(self.num_groups, 3, device=self.device)
         group_offset[:, 0] = torch.arange(start=0, end=-(group_interval * self.num_groups), step=-group_interval,
                                           device=self.device)
@@ -295,7 +270,7 @@ class Logistics(IsaacEnv):
     def make_payload_offset(self):
         payload_offset = []
         for i in range(self.num_payloads_per_group):
-            payload_position = [3 - i * 2, 0, 0]
+            payload_position = [6 - i * 3, -9, 0]
             payload_offset.append(payload_position)
         return torch.FloatTensor(payload_offset).to(device=self.device)
 
@@ -312,8 +287,10 @@ class Logistics(IsaacEnv):
 
         groups = []
         payload_type = torch.zeros(self.num_groups, self.num_payloads_per_group)
-        for i in range(self.num_groups):
-            payload_type[i] = torch.randperm(Payload.__len__())[:self.num_payloads_per_group]
+        # for i in range(self.num_groups):
+        #     payload_type[i] = torch.randperm(Payload.__len__())[:self.num_payloads_per_group]
+        payload_type[0] = torch.tensor([0,2,4])
+        payload_type[1] = torch.tensor([4,0,2])
 
         for i in range(self.num_groups):
             drone_pos = self.formation + self.group_offset[i]
@@ -341,8 +318,8 @@ class Logistics(IsaacEnv):
             groups.append(
                 GroupSnapshot(drone_pos, drone_rot, drone_vel, target_payload_idx, stage, count, payloads)
             )
-
-        return StateSnapshot(groups)
+        done_payloads = {payload.name: 0 for payload in Payload}
+        return StateSnapshot(groups, done_payloads)
 
     def _design_scene(self) -> Optional[List[str]]:
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
@@ -352,65 +329,65 @@ class Logistics(IsaacEnv):
         if self.enable_background:
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A1.usd"
-            prim_utils.create_prim("/World/envs/Rack1", usd_path=asset_path, translation=(-9, -9, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack1", usd_path=asset_path, translation=(-12, -12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A2.usd"
-            prim_utils.create_prim("/World/envs/Rack2", usd_path=asset_path, translation=(-4, -9, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack2", usd_path=asset_path, translation=(-6, -12, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A3.usd"
-            prim_utils.create_prim("/World/envs/Rack3", usd_path=asset_path, translation=(1, -9, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack3", usd_path=asset_path, translation=(2, -12, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A4.usd"
-            prim_utils.create_prim("/World/envs/Rack4", usd_path=asset_path, translation=(-9, -3, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack4", usd_path=asset_path, translation=(-12, -4, 0), scale=(0.01, 0.01, 0.01))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A5.usd"
-            prim_utils.create_prim("/World/envs/Rack5", usd_path=asset_path, translation=(-9, 3, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack5", usd_path=asset_path, translation=(-12, 4, 0), scale=(0.01, 0.01, 0.01))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A6.usd"
-            prim_utils.create_prim("/World/envs/Rack6", usd_path=asset_path, translation=(-9, 9, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack6", usd_path=asset_path, translation=(-12, 12, 0), scale=(0.01, 0.01, 0.01))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/warehouse_test.usd"
-            prim_utils.create_prim("/World/envs/Warehouse", usd_path=asset_path, translation=(0, 10, 0.01), scale=(0.02, 0.02, 0.02))
+            prim_utils.create_prim("/World/envs/Warehouse", usd_path=asset_path, translation=(0, 12, 0.01), scale=(0.02, 0.02, 0.02))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A6.usd"
-            prim_utils.create_prim("/World/envs/Rack7", usd_path=asset_path, translation=(-9, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack7", usd_path=asset_path, translation=(-12, 16, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A7.usd"
-            prim_utils.create_prim("/World/envs/Rack8", usd_path=asset_path, translation=(-4, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack8", usd_path=asset_path, translation=(-6, 16, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A8.usd"
-            prim_utils.create_prim("/World/envs/Rack9", usd_path=asset_path, translation=(1, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack9", usd_path=asset_path, translation=(2, 16, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A9.usd"
-            prim_utils.create_prim("/World/envs/Rack10", usd_path=asset_path, translation=(6, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack10", usd_path=asset_path, translation=(9, 16, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A1.usd"
-            prim_utils.create_prim("/World/envs/Rack11", usd_path=asset_path, translation=(11, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack11", usd_path=asset_path, translation=(14, 16, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
 
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
-            prim_utils.create_prim("/World/envs/Rack12", usd_path=asset_path, translation=(-15, 10, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack12", usd_path=asset_path, translation=(-20, 10, 0), scale=(0.01, 0.01, 0.01))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
-            prim_utils.create_prim("/World/envs/Rack13", usd_path=asset_path, translation=(-15, 15, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack13", usd_path=asset_path, translation=(-20, 15, 0), scale=(0.01, 0.01, 0.01))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
-            prim_utils.create_prim("/World/envs/Rack14", usd_path=asset_path, translation=(-15, 5, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack14", usd_path=asset_path, translation=(-20, 5, 0), scale=(0.01, 0.01, 0.01))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
-            prim_utils.create_prim("/World/envs/Rack15", usd_path=asset_path, translation=(-15, 0, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack15", usd_path=asset_path, translation=(-20, 0, 0), scale=(0.01, 0.01, 0.01))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
-            prim_utils.create_prim("/World/envs/Rack16", usd_path=asset_path, translation=(-15, -5, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack16", usd_path=asset_path, translation=(-20, -5, 0), scale=(0.01, 0.01, 0.01))
 
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
-            prim_utils.create_prim("/World/envs/Rack17", usd_path=asset_path, translation=(-15, -15, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack17", usd_path=asset_path, translation=(-20, -20, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
-            prim_utils.create_prim("/World/envs/Rack18", usd_path=asset_path, translation=(-10, -15, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack18", usd_path=asset_path, translation=(-15, -20, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
-            prim_utils.create_prim("/World/envs/Rack19", usd_path=asset_path, translation=(-5, -15, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack19", usd_path=asset_path, translation=(-8, -20, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
-            prim_utils.create_prim("/World/envs/Rack20", usd_path=asset_path, translation=(0, -15, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack20", usd_path=asset_path, translation=(0, -20, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
-            prim_utils.create_prim("/World/envs/Rack21", usd_path=asset_path, translation=(5, -15, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack21", usd_path=asset_path, translation=(8, -20, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
-            prim_utils.create_prim("/World/envs/Rack22", usd_path=asset_path, translation=(11, 0, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack22", usd_path=asset_path, translation=(15, 0, 0), scale=(0.01, 0.01, 0.01))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
-            prim_utils.create_prim("/World/envs/Rack23", usd_path=asset_path, translation=(11, -5, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack23", usd_path=asset_path, translation=(15, -5, 0), scale=(0.01, 0.01, 0.01))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
-            prim_utils.create_prim("/World/envs/Rack24", usd_path=asset_path, translation=(11, 5, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack24", usd_path=asset_path, translation=(15, 5, 0), scale=(0.01, 0.01, 0.01))
 
         for i, group_snapshot in enumerate(self.initial_state.group_snapshots):
             drones = drone_model(cfg=cfg)
@@ -585,7 +562,7 @@ class Logistics(IsaacEnv):
         drone_pdist = torch.vmap(off_diag)(torch.norm(relative_pos, dim=-1, keepdim=True))
         relative_pos = torch.vmap(off_diag)(relative_pos)
 
-        print(relative_pos)
+        # print(relative_pos)
 
         obs_others = torch.cat([
             relative_pos,
@@ -681,7 +658,7 @@ class Logistics(IsaacEnv):
                 terminated = (self.count[i] > 70)
             elif group_snapshot.stage == Stage.PRE_TRANSPORT:
                 self.count[i] += 1
-                terminated = (self.count[i] > 100)
+                terminated = (self.count[i] > 150)
             elif group_snapshot.stage == Stage.TRANSPORT:
                 payload = self.groups[i].transport.payload_view
                 payload_target_heading = torch.zeros(1, 3, device=self.device)
@@ -690,7 +667,7 @@ class Logistics(IsaacEnv):
                 payload_heading: torch.Tensor = quat_axis(payload_rot, axis=0)
 
                 payload = group_snapshot.payloads[group_snapshot.target_payload_idx]
-                payload_target_pos = torch.tensor(payload.detail().target_pos, device=self.device)
+                payload_target_pos = torch.tensor(payload.target_pos, device=self.device)
 
                 target_payload_rpose = torch.cat([
                     payload_target_pos - payload_pos,
@@ -698,9 +675,9 @@ class Logistics(IsaacEnv):
 
                 p_distance = torch.norm(target_payload_rpose, dim=-1, keepdim=True)
 
-                if p_distance < 1.33:
+                if p_distance < 1.004:
                     self.count[i] += 1
-                terminated = (self.count[i] > 49)
+                terminated = (self.count[i] > 5)
             else:
                 raise NotImplementedError
 

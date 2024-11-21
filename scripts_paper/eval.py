@@ -36,12 +36,14 @@ algos = {
     "tdmpc": TDMPCPolicy,
 }
 
-transport_checkpoint_D1 = "./transport_D1_retrain_0924_checkpoint_2000.pt"
-transport_checkpoint_A1 = './transport_A1_retrain_0924_checkpoint_2000.pt'
-formation_checkpoint_squre = "./checkpoint_long.pt"
-formation_checkpoint_long = "./formation_checkpoint_square.pt"
+transport_checkpoint_D1 = "./1119_checkpoint_8000.pt"
+transport_checkpoint_A1 = './checkpoint_transport_1112_A1.pt'
+transport_checkpoint_B1 = "./checkpoint_transport_1112_B1.pt"
 
-formation_checkpoint_final = './checkpoint_test4.pt'
+
+transport_checkpoint_temp='./115_checkpoint_6000.pt'
+formation_checkpoint_final = './checkpoint_formation_1112_safedistance1.pt'
+# formation_checkpoint_final = './Formation_checkpoint_Fox.pt'
 @hydra.main(version_base=None, config_path=CONFIG_PATH, config_name="train")
 def main(cfg):
     OmegaConf.register_new_resolver("eval", eval)
@@ -75,15 +77,16 @@ def main(cfg):
         return env, transforms
 
     transport_env, transport_transform = get_env(name='TransportHover', config_path='Transport/TransportHover', headless=True)
-    transport_policy_long = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=transport_env.agent_spec["drone"],
-                                                    device="cuda")
-    transport_policy_long.load_state_dict(torch.load(transport_checkpoint_D1))
 
-    transport_policy_squre = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=transport_env.agent_spec["drone"],
+    transport_policy_A1 = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=transport_env.agent_spec["drone"],
                                                     device="cuda")
-    transport_policy_squre.load_state_dict(torch.load(transport_checkpoint_A1))
-
-    
+    transport_policy_A1.load_state_dict(torch.load(transport_checkpoint_A1))
+    transport_policy_B1 = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=transport_env.agent_spec["drone"],
+                                                    device="cuda")
+    transport_policy_B1.load_state_dict(torch.load(transport_checkpoint_B1))
+    transport_policy_D1 = algos[cfg.algo2.name.lower()](cfg.algo2, agent_spec=transport_env.agent_spec["drone"],
+                                                    device="cuda")
+    transport_policy_D1.load_state_dict(torch.load(transport_checkpoint_D1))
     simulation_app.context.close_stage()
     simulation_app.context.new_stage()
 
@@ -98,7 +101,7 @@ def main(cfg):
     env, _ = get_env(name='Logistics', config_path='Logistics', headless=cfg.headless)
 
     frames = []
-    seed = 2
+    seed = cfg.seed
     action_size = torch.Size([1,4,4])
 
     env.enable_render(True)
@@ -106,7 +109,7 @@ def main(cfg):
     td = env.reset()
 
     state_snapshot = env.snapshot_state()
-    max_tasks = 30
+    max_tasks = 35
 
     for i in range(max_tasks):
         frame_count = 0
@@ -122,12 +125,14 @@ def main(cfg):
                 elif group.stage == Stage.PRE_TRANSPORT:
                     actions.append(torch.full(action_size, 0, device="cuda"))
                 elif group.stage == Stage.TRANSPORT:
-                    if group.target_payload().type.name == "D1" or group.target_payload().type.name == "CC1":
-                        transformed_state = transport_transform._step(env.get_transport_state(j), env.get_transport_state(j))
-                        actions.append(transport_policy_long(transformed_state, deterministic=True)['agents']['action'])
-                    else:
-                        transformed_state = transport_transform._step(env.get_transport_state(j), env.get_transport_state(j))
-                        actions.append(transport_policy_squre(transformed_state, deterministic=True)['agents']['action'])
+                    name = group.target_payload().detail().name
+                    transformed_state= transport_transform._step(env.get_transport_state(j), env.get_transport_state(j))
+                    if name=="B1" :
+                        actions.append(transport_policy_B1(transformed_state, deterministic=True)['agents']['action'])
+                    elif name=="A1":
+                        actions.append(transport_policy_A1(transformed_state, deterministic=True)['agents']['action'])
+                    else :
+                        actions.append(transport_policy_D1(transformed_state, deterministic=True)['agents']['action'])
                 else:
                     raise NotImplementedError
 
@@ -147,6 +152,7 @@ def main(cfg):
             imageio.mimsave("video_temp.mp4", frames, fps=0.5 / cfg.sim.dt)
 
         env, _ = get_env(name='Logistics', config_path='Logistics', headless=cfg.headless, initial_state=state_snapshot)
+        env.enable_render(True)
         td = env.reset()
 
     if len(frames):

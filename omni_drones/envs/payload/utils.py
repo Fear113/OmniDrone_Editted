@@ -98,4 +98,3 @@ def attach_payload(
 #     kit_utils.set_collision_properties(
 #         drone_prim_path + "/payload", contact_offset=0.02, rest_offset=0
 #     )
-
