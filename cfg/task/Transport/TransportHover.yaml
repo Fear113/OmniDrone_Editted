@@ -7,8 +7,9 @@ defaults:
   # - /base/randomization_base@_here_
 
 env:
-  num_envs: 100
+  num_envs: 150
   env_spacing: 50
+  max_episode_length: 1500
 
 drone_model: Hummingbird
 num_drones: 4

@@ -124,7 +124,7 @@ class TransportationGroup(RobotBase):
                 drone_translations = drone_translations_origin
             else:
                 if self.num_drones == 4:
-                    if name=="D1" or name=="CC1" or name is None:   # did
+                    if name=="D1" or name=="CC1":   # did
                         drone_translations = torch.tensor([
                             [0.6, 0.9, 0.45],
                             [0.6, -0.9, 0.45],
@@ -138,7 +138,7 @@ class TransportationGroup(RobotBase):
                             [-0.3, -0.45, 0.175],
                             [-0.3, 0.45, 0.175],
                         ])
-                    elif name=="A1" or name=="CA1": # did
+                    elif name=="A1" or name=="CA1"or name is None: # did
                         drone_translations = torch.tensor([
                             [0.5, 0.5, 0.9],
                             [0.5, -0.5, 0.9],
@@ -283,4 +283,3 @@ class TransportationGroup(RobotBase):
         self.acc[env_ids] = 0.
         self.jerk[env_ids] = 0.
         return env_ids
-
