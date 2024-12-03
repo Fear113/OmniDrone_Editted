@@ -9,6 +9,9 @@ import wandb
 from omegaconf import OmegaConf
 import imageio
 
+
+from datetime import datetime
+
 from omni_drones import CONFIG_PATH, init_simulation_app
 from omni_drones.utils.torchrl import SyncDataCollector, AgentSpec
 from omni_drones.utils.torchrl.transforms import (
@@ -90,6 +93,12 @@ def main(cfg):
     run = init_wandb(cfg)
     setproctitle(run.name)
     print(OmegaConf.to_yaml(cfg))
+
+    ### date ###
+    month = str(datetime.today().month) if datetime.today().month // 10 > 0 else "0" + str(datetime.today().month)
+    day = str(datetime.today().day)
+    date = month + day
+    ### date ###
 
     from omni_drones.envs.isaac_env import IsaacEnv
     algos = {
@@ -182,6 +191,7 @@ def main(cfg):
     @torch.no_grad()
     def evaluate(
         seed: int = 0,
+        epoch=0
     ):
         frames = []
 
@@ -222,7 +232,7 @@ def main(cfg):
         }
 
         if len(frames):
-            imageio.mimsave("video.mp4", frames, fps=0.5 / cfg.sim.dt)
+            imageio.mimsave(date + "_" + str(epoch) + "video.mp4", frames, fps=0.5 / cfg.sim.dt)
 
         frames.clear()
         return info
@@ -245,17 +255,19 @@ def main(cfg):
 
         if eval_interval > 0 and i % eval_interval == 0:
             logging.info(f"Eval at {collector._frames} steps.")
-            info.update(evaluate())
+            info.update(evaluate(epoch=i))
             env.train()
             base_env.train()
 
         if save_interval > 0 and i % save_interval == 0:
             if hasattr(policy, "state_dict"):
                 logging.info(f"Save checkpoint")
-                torch.save(policy.state_dict(), "checkpoint.pt")
+                torch.save(policy.state_dict(), date + "_checkpoint_" + str(i) + ".pt")  # f"checkpoint_{i}.pt")
 
         run.log(info)
         print(OmegaConf.to_yaml({k: v for k, v in info.items() if isinstance(v, float)}))
+
+
 
         pbar.set_postfix({
             "rollout_fps": collector._fps,
@@ -267,11 +279,11 @@ def main(cfg):
     
     logging.info(f"Final Eval at {collector._frames} steps.")
     info = {"env_frames": collector._frames}
-    info.update(evaluate())
+    info.update(evaluate(epoch=i))
     run.log(info)
 
     try:
-        ckpt_path = os.path.join(run.dir, "checkpoint_final.pt")
+        ckpt_path = os.path.join(run.dir, date + "checkpoint_final.pt")
         torch.save(policy.state_dict(), ckpt_path)
         logging.info(f"Saved checkpoint to {str(ckpt_path)}")
     except AttributeError:
