@@ -289,8 +289,8 @@ class Logistics(IsaacEnv):
         payload_type = torch.zeros(self.num_groups, self.num_payloads_per_group)
         # for i in range(self.num_groups):
         #     payload_type[i] = torch.randperm(Payload.__len__())[:self.num_payloads_per_group]
-        payload_type[0] = torch.tensor([0,2,4])
-        payload_type[1] = torch.tensor([4,0,2])
+        payload_type[0] = torch.tensor([4,4,4])
+        # payload_type[1] = torch.tensor([2,4,2])
 
         for i in range(self.num_groups):
             drone_pos = self.formation + self.group_offset[i]
@@ -415,10 +415,11 @@ class Logistics(IsaacEnv):
                     "/World/envs/env_0/payloadTargetVis{}".format(i),
                     position=group_snapshot.target_payload().target_pos,
                     scale=group_snapshot.target_payload().detail().shadow_scale,
-                    orientation=(0.7071068,0,0,0),
+                    orientation=group_snapshot.target_payload().type.value.target_rot,
                     color=torch.tensor([0.8, 0.1, 0.1]),
                     size=2.01,
                 )
+
                 kit_utils.set_collision_properties(
                     "/World/envs/env_0/payloadTargetVis{}".format(i),
                     collision_enabled=False
@@ -602,7 +603,8 @@ class Logistics(IsaacEnv):
         payload_drone_rpos = payload_pos.unsqueeze(1) - drone_pos
 
         payload_target_pos = torch.tensor(group_snapshot.payloads[group_snapshot.target_payload_idx].target_pos, device=self.device)
-        payload_target_heading = torch.zeros(1, 3, device=self.device)
+        payload_target_rot = torch.tensor(group_snapshot.payloads[group_snapshot.target_payload_idx].type.value.target_rot, device=self.device)
+        payload_target_heading = quat_axis(payload_target_rot.unsqueeze(0), 0)
 
         target_payload_rpose = torch.cat([
             payload_target_pos - payload_pos,
@@ -652,7 +654,8 @@ class Logistics(IsaacEnv):
                 target_pos = payload.payload_pos.clone().detach()
                 target_pos[2] += 1
                 distance = torch.norm(pos.mean(-2, keepdim=True) - target_pos, dim=-1)
-                terminated = (distance < 0.2)
+                terminated = True
+                # terminated = (distance < 0.25)
             elif group_snapshot.stage == Stage.POST_FORMATION:
                 self.count[i] += 1
                 terminated = (self.count[i] > 70)
