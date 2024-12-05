@@ -153,8 +153,8 @@ class TransportHover(IsaacEnv):
             "/World/envs/env_0/payloadTargetVis",
             translation=torch.tensor([0., 0., 7.5]),
             # scale=torch.tensor([0.75, 0.5, 0.2]),
-            scale=torch.tensor([0.6, 0.9, 0.3]),  # D1
-            # scale=torch.tensor([0.4, 0.4, 0.3]),  # A1
+            # scale=torch.tensor([0.6, 0.9, 0.3]),  # D1
+            scale=torch.tensor([0.5, 0.5, 0.5]),  # A1
             color=torch.tensor([0.8, 0.1, 0.1]),
             size=2.01,
         )
@@ -167,7 +167,7 @@ class TransportHover(IsaacEnv):
             disable_gravity=True
         )
 
-        self.group.spawn(translations=[(0, 0, 7.5)], enable_collision=False, name='D1', payload_usd=Payload.D1.value.usd_path, payload_scale = Payload.D1.value.scale)
+        self.group.spawn(translations=[(0, 0, 7.5)], enable_collision=False, name='A1', payload_usd=Payload.A1.value.usd_path, payload_scale = Payload.A1.value.scale)
         return ["/World/defaultGroundPlane"]
 
     def _set_specs(self):
