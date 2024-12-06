@@ -36,13 +36,13 @@ algos = {
     "tdmpc": TDMPCPolicy,
 }
 
-transport_checkpoint_D1 = "./1119_checkpoint_8000.pt"
-transport_checkpoint_A1 = './checkpoint_transport_1112_A1.pt'
-transport_checkpoint_B1 = "./checkpoint_transport_1112_B1.pt"
+transport_checkpoint_D1 = "./1126_checkpoint_26000.pt"
+transport_checkpoint_A1 = './checkpoint_final_A1.pt'
+transport_checkpoint_B1 = "./Transportation_B1_1203.pt"
 
 
-transport_checkpoint_temp='./115_checkpoint_6000.pt'
-formation_checkpoint_final = './checkpoint_formation_1112_safedistance1.pt'
+transport_checkpoint_temp='./Transportation_B1_1203.pt'
+formation_checkpoint_final = './Formation_1203.pt'
 # formation_checkpoint_final = './Formation_checkpoint_Fox.pt'
 @hydra.main(version_base=None, config_path=CONFIG_PATH, config_name="train")
 def main(cfg):
@@ -77,19 +77,23 @@ def main(cfg):
         return env, transforms
 
     transport_env, transport_transform = get_env(name='TransportHover', config_path='Transport/TransportHover', headless=True)
+    # cfg.algo.actor.hidden_units=[256,128,128]
+    # cfg.algo.critic.hidden_units=[256,128,128]
 
-    transport_policy_A1 = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=transport_env.agent_spec["drone"],
-                                                    device="cuda")
-    transport_policy_A1.load_state_dict(torch.load(transport_checkpoint_A1))
+    # transport_policy_A1 = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=transport_env.agent_spec["drone"],
+    #                                                 device="cuda")
+    # transport_policy_A1.load_state_dict(torch.load(transport_checkpoint_A1))
     transport_policy_B1 = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=transport_env.agent_spec["drone"],
                                                     device="cuda")
     transport_policy_B1.load_state_dict(torch.load(transport_checkpoint_B1))
-    transport_policy_D1 = algos[cfg.algo2.name.lower()](cfg.algo2, agent_spec=transport_env.agent_spec["drone"],
+    cfg.algo.actor.hidden_units=[256,128,128]
+    cfg.algo.critic.hidden_units=[256,128,128]
+    transport_policy_D1 = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=transport_env.agent_spec["drone"],
                                                     device="cuda")
     transport_policy_D1.load_state_dict(torch.load(transport_checkpoint_D1))
     simulation_app.context.close_stage()
     simulation_app.context.new_stage()
-
+    
     formation_env, formation_transform = get_env(name='Formation', config_path='Formation', headless=True)
     formation_policy = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=formation_env.agent_spec["drone"],
                                                     device="cuda")
@@ -129,10 +133,13 @@ def main(cfg):
                     transformed_state= transport_transform._step(env.get_transport_state(j), env.get_transport_state(j))
                     if name=="B1" :
                         actions.append(transport_policy_B1(transformed_state, deterministic=True)['agents']['action'])
-                    elif name=="A1":
-                        actions.append(transport_policy_A1(transformed_state, deterministic=True)['agents']['action'])
+                    # elif name=="A1":
+                    #     actions.append(transport_policy_A1(transformed_state, deterministic=True)['agents']['action'])
                     else :
                         actions.append(transport_policy_D1(transformed_state, deterministic=True)['agents']['action'])
+                elif group.stage == Stage.FINISH:
+                    transformed_state = formation_transform._step(env.get_formation_state(j), env.get_formation_state(j))
+                    actions.append(formation_policy(transformed_state, deterministic=True)['agents']['action'])
                 else:
                     raise NotImplementedError
 

@@ -9,7 +9,7 @@ defaults:
 env: 
   num_envs: 150
   max_episode_length: 2000
-  env_spacing: 70
+  env_spacing: 60
 
 drone_model: Hummingbird
 force_sensor: false

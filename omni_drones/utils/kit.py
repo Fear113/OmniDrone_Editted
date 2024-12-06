@@ -63,7 +63,7 @@ def create_ground_plane(
         # prepend path to the grid plane
         usd_path = f"{assets_root_path}/Isaac/Environments/Grid/default_environment.usd"
     # Spawn Ground-plane
-    prim_utils.create_prim(prim_path, usd_path=usd_path, translation=(0.0, 0.0, z_position))
+    prim_utils.create_prim(prim_path, usd_path=usd_path, translation=(0.0, 0.0, z_position), scale=[3,3,1])
     # Create physics material
     material = PhysicsMaterial(
         f"{prim_path}/groundMaterial",
