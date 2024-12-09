@@ -273,7 +273,7 @@ class Logistics(IsaacEnv):
     def make_payload_offset(self):
         payload_offset = []
         for i in range(self.num_payloads_per_group):
-            payload_position = [6 - i * 3, -13, 0]
+            payload_position = [6 - i * 3, -3, 0]
             payload_offset.append(payload_position)
         return torch.FloatTensor(payload_offset).to(device=self.device)
 
@@ -294,7 +294,7 @@ class Logistics(IsaacEnv):
         #     payload_type[i] = torch.tensor([0,2,4])[torch.randperm(3)]
         payload_type[0] = torch.tensor([0, 1, 3])
         payload_type[1] = torch.tensor([3, 0, 1])
-        payload_type[2] = torch.tensor([1, 3, 0])
+        # payload_type[2] = torch.tensor([1, 3, 0])
 
         for i in range(self.num_groups):
             drone_pos = self.formation + self.group_offset[i]
