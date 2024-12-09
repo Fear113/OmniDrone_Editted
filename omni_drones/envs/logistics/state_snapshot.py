@@ -46,6 +46,7 @@ class GroupSnapshot:
     stage: Stage
     count: int
     payloads: list[ConnectedPayload | DisconnectedPayload]
+    n_done: int
 
     def target_payload(self):
         return self.payloads[self.target_payload_idx]
