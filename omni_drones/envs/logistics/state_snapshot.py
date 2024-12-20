@@ -54,4 +54,5 @@ class GroupSnapshot:
 @dataclass
 class StateSnapshot:
     group_snapshots: list[GroupSnapshot]
+    stacked_payload: list[DisconnectedPayload]
     done_payloads: dict[str, int]
