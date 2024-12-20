@@ -54,6 +54,7 @@ from omni.kit.commands import execute
 from omni.usd import get_world_transform_matrix
 from omni.isaac.core.objects import DynamicSphere
 from omni_drones.robots.robot import ASSET_PATH
+from omni.isaac.debug_draw import _debug_draw
 
 @dataclass
 class Group:
@@ -85,6 +86,7 @@ class Logistics(IsaacEnv):
         self.done_group = None
         self.done_payloads = initial_state.done_payloads if initial_state is not None else {payload.name: 0 for payload in Payload}
         self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
+        self.draw = _debug_draw.acquire_debug_draw_interface()
 
         super().__init__(cfg, headless)
 
@@ -374,6 +376,25 @@ class Logistics(IsaacEnv):
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
         cfg = drone_model.cfg_cls(force_sensor=self.cfg.task.force_sensor)
         scene_utils.design_scene()
+
+        payload_types = [Payload.A1.value, Payload.B1.value, Payload.D1.value]
+        for p in payload_types:
+            target = np.array(p.target_pos)
+            # A1_area = [(3, 3, 5), (3, 6, 5), (6, 3, 5), (6, 6, 5), (3, 3, 5)]
+            guide_lines = np.array([
+                [-2, -2, 0],
+                [5, -2, 0],
+                [5, 2, 0],
+                [-2, 2, 0],
+                [-2, -2, 0]
+            ])
+            _area = target + guide_lines
+            area = [tuple(e) for e in _area]
+            point_list_0 = area[:-1]
+            point_list_1 = area[1:]
+            colors = [(1.0, 1.0, 1.0, 1.0) for _ in range(len(point_list_0))]
+            sizes = [5 for _ in range(len(point_list_0))]
+            self.draw.draw_lines(point_list_0, point_list_1, colors, sizes)
 
         if self.enable_background:
 
