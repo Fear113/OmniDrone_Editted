@@ -13,7 +13,7 @@ seed: 1
 
 viewer:
   resolution: [960, 720]
-  eye: [30., 0., 18.]
+  eye: [18., 0., 10.]
   lookat: [0., 0., 1.]
 
 wandb:
