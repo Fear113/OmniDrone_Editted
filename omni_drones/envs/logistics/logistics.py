@@ -21,6 +21,7 @@
 # SOFTWARE.
 from dataclasses import dataclass
 import random
+from enum import Enum
 
 import omni_drones.utils.kit as kit_utils
 import omni_drones.utils.scene as scene_utils
@@ -62,6 +63,16 @@ class Group:
     payloads: []
     transport: Optional[TransportationGroup]
 
+class Color(Enum):
+    WHITE = (1., 1., 1., 1.)
+    BLACK = (0., 0., 0., 0.)
+    RED = (1., 0., 0., 1.)
+    GREEN = (0., 1., 0., 1.)
+    BLUE = (0., 0., 1., 1.)
+    CYAN = (0., 1., 1., 1.)
+    MAGENTA = (1., 0., 1., 1.)
+    YELLOW = (1., 1., 0., 1.)
+
 class Logistics(IsaacEnv):
     def __init__(self, cfg, headless, initial_state: Optional[StateSnapshot] = None):
         self.device = torch.device("cuda:0")
@@ -95,6 +106,16 @@ class Logistics(IsaacEnv):
                 group.transport.initialize(f"/World/envs/env_*/Group_{i}")
             group.drones.initialize(f"/World/envs/env_*/Group_{i}/{self.groups[i].drones.name.lower()}_*")
 
+        self.drone_circle_color = [Color.RED, Color.GREEN, Color.BLUE]
+        n_circle_points = 10
+        self.circle_points = np.zeros((n_circle_points + 1, 3))
+        radius = 0.4
+        for i in range(n_circle_points):
+            angle = 2 * np.pi * i / n_circle_points
+            x = radius * np.cos(angle)
+            y = radius * np.sin(angle)
+            self.circle_points[i] = [x, y, 0]
+        self.circle_points[-1] = self.circle_points[0]
         self.alpha = 0.8
         self.count = [snapshot.count for snapshot in self.initial_state.group_snapshots]
         self.world = World()
@@ -392,24 +413,6 @@ class Logistics(IsaacEnv):
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
         cfg = drone_model.cfg_cls(force_sensor=self.cfg.task.force_sensor)
         scene_utils.design_scene()
-        payload_types = [Payload.A1.value, Payload.B1.value, Payload.D1.value]
-        for p in payload_types:
-            target = np.array(p.target_pos)
-            # A1_area = [(3, 3, 5), (3, 6, 5), (6, 3, 5), (6, 6, 5), (3, 3, 5)]
-            guide_lines = np.array([
-                [-2, -2, 0],
-                [5, -2, 0],
-                [5, 2, 0],
-                [-2, 2, 0],
-                [-2, -2, 0]
-            ])
-            _area = target + guide_lines
-            area = [tuple(e) for e in _area]
-            point_list_0 = area[:-1]
-            point_list_1 = area[1:]
-            colors = [(1.0, 1.0, 1.0, 1.0) for _ in range(len(point_list_0))]
-            sizes = [5 for _ in range(len(point_list_0))]
-            self.draw.draw_lines(point_list_0, point_list_1, colors, sizes)
         if self.enable_background:
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A1.usd"
@@ -716,6 +719,37 @@ class Logistics(IsaacEnv):
         )
 
     def _pre_sim_step(self, tensordict: TensorDictBase):
+        self.draw.clear_lines()
+        # draw target zone
+        payload_types = [Payload.A1.value, Payload.B1.value, Payload.D1.value]
+        for p in payload_types:
+            target = np.array(p.target_pos)
+            # A1_area = [(3, 3, 5), (3, 6, 5), (6, 3, 5), (6, 6, 5), (3, 3, 5)]
+            guide_lines = np.array([
+                [-2, -2, 0],
+                [5, -2, 0],
+                [5, 2, 0],
+                [-2, 2, 0],
+                [-2, -2, 0]
+            ])
+            _area = target + guide_lines
+            area = [tuple(e) for e in _area]
+            point_list_0 = area[:-1]
+            point_list_1 = area[1:]
+            colors = [(1.0, 1.0, 1.0, 1.0) for _ in range(len(point_list_0))]
+            sizes = [5 for _ in range(len(point_list_0))]
+            self.draw.draw_lines(point_list_0, point_list_1, colors, sizes)
+
+        # draw drone marker
+        for i, group in enumerate(self.groups):
+            for pos in group.drones.get_state()[0]:
+                drone_circle_points = self.circle_points + np.array(pos.detach().cpu()[:3])
+                point_list_0 = drone_circle_points[:-1]
+                point_list_1 = drone_circle_points[1:]
+                colors = [self.drone_circle_color[i].value for _ in range(len(point_list_0))]
+                sizes = [2 for _ in range(len(point_list_0))]
+                self.draw.draw_lines(point_list_0, point_list_1, colors, sizes)
+
         actions = tensordict[("agents", "action")]
         for i, start in enumerate(torch.arange(0, self.drone_num, self.num_drones_per_group)):
             end = start + self.num_drones_per_group
