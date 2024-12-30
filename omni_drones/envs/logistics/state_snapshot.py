@@ -13,8 +13,11 @@ class Stage(Enum):
     PRE_TRANSPORT=2
     TRANSPORT=3
 
-    def next(self):
-        return Stage((self.value + 1) % Stage.__len__())
+    def next(self, idx=None):
+        if idx ==-1:
+            return Stage.__len__() +1
+        else:
+            return Stage((self.value + 1) % Stage.__len__())
 
 @dataclass
 class _Payload:

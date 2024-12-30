@@ -177,7 +177,7 @@ FORMATION_D1_S = [ #직육면체, 정육면체 6개를 이어붙인 구조. 좀 
 # ]
 
 MYFORMATION = np.array([
-    FORMATION_A1, FORMATION_B1, FORMATION_B2, FORMATION_D1, FORMATION_D1_S
+    FORMATION_A1, FORMATION_A2, FORMATION_B1, FORMATION_B2, FORMATION_D1, FORMATION_D1_S
 ])
 
 def sample_from_grid(cells: torch.Tensor, n):
@@ -227,12 +227,12 @@ class Formation(IsaacEnv):
         )
 
         self.middle_pos_dist = D.Uniform(
-            torch.tensor([-30, -30, 1.0], device=self.device),
-            torch.tensor([30, 30, 2.5], device=self.device)
+            torch.tensor([-20, -20, 1.0], device=self.device),
+            torch.tensor([20, 20, 2.5], device=self.device)
         )
         self.spead_pos_dist = D.Uniform(
-            torch.tensor([-7.5, -7.5, -0.5], device=self.device),
-            torch.tensor([7.5, 7.5, 0.5], device=self.device)
+            torch.tensor([-5, -5, -0.5], device=self.device),
+            torch.tensor([5, 5, 0.5], device=self.device)
         )
 
         # to default
@@ -250,10 +250,6 @@ class Formation(IsaacEnv):
         self.last_cost_h = torch.zeros(self.num_envs, 1, device=self.device)
         self.last_cost_pos = torch.zeros(self.num_envs, 1, device=self.device)
         self.envOneHot = torch.zeros(self.num_envs, len(Payload), device=self.device)
-
-
-        self.init_distance = torch.zeros(self.num_envs, 1, device=self.device)
-
 
     def _design_scene(self) -> Optional[List[str]]:
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
@@ -486,12 +482,6 @@ class Formation(IsaacEnv):
 
         self.stats[env_ids] = 0.
 
-
-        init_distance = torch.norm(com_pos.mean(-2, keepdim=True) - self.target_pos[env_ids], dim=-1)
-        self.init_distance[env_ids] = init_distance
-        # print("self.init_distance", self.init_distance)  # ([100])
-
-
     def _pre_sim_step(self, tensordict: TensorDictBase):
         actions = tensordict[("agents", "action")]
         self.effort = self.drone.apply_action(actions)
@@ -541,21 +531,20 @@ class Formation(IsaacEnv):
         
         distance = torch.norm(pos.mean(-2, keepdim=True) - self.target_pos, dim=-1)
 
-        reward_formation =  3 / (1 + torch.square(cost_h * 1.6))
+        reward_formation =  1 / (1 + torch.square(cost_h * 1.6)) 
         # reward_pos = 1 / (1 + cost_pos)
 
         # reward_formation = torch.exp(- cost_h * 1.6)
-        reward_pos_exp = torch.exp(- distance) *2
-        reward_pos_linear = 1 - distance / self.init_distance
+        reward_pos = torch.exp(- distance) *2
         reward_heading = self.drone.heading[..., 0].mean(-1, True)
-        reward_pos = reward_pos_exp/2 + reward_pos_linear/2
+
         separation = self.drone_pdist.min(dim=-2).values.min(dim=-2).values
-        # reward_separation = torch.square(separation / self.safe_distance).clamp(0, 1)
+        reward_separation = torch.square(separation / self.safe_distance).clamp(0, 1)
         reward = (
-            (
-                reward_formation
+            reward_separation * (
+                reward_formation 
                 + reward_formation * (reward_pos + reward_heading)
-                + 0.7 * reward_pos * reward_formation
+                + 0.6 * reward_pos * reward_formation
             )
         )
 
@@ -564,9 +553,9 @@ class Formation(IsaacEnv):
         self.last_cost_pos[:] = torch.square(distance)
 
         truncated = (self.progress_buf >= self.max_episode_length).unsqueeze(-1)
-        crash = (pos[..., 2] < 0.3).any(-1, keepdim=True)
+        crash = (pos[..., 2] < 0.05).any(-1, keepdim=True)
 
-        terminated = crash | (separation<0.2)
+        terminated = crash | (separation<0.1)
 
         self.stats["return"].add_(reward)
         self.stats["episode_len"][:] = self.progress_buf.unsqueeze(-1)

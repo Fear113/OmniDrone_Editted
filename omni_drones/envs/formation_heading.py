@@ -27,7 +27,7 @@ import torch
 import torch.distributions as D
 
 from omni_drones.envs.isaac_env import AgentSpec, IsaacEnv, List, Optional
-from omni_drones.utils.torch import cpos, off_diag, others, make_cells, euler_to_quaternion
+from omni_drones.utils.torch import cpos, off_diag, others, make_cells, euler_to_quaternion, quat_axis
 from omni_drones.robots.drone import MultirotorBase
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torchrl.data import CompositeSpec, UnboundedContinuousTensorSpec, DiscreteTensorSpec
@@ -242,8 +242,12 @@ class Formation(IsaacEnv):
         )
         self.target_pos = self.target_pos.expand(self.num_envs, 1, 3)
         self.target_heading = torch.zeros(self.num_envs, 3, device=self.device)
-        self.target_heading[..., 0] = -1
-
+        # self.target_heading[..., 0] = -1
+        self.payload_target_rpy_dist = D.Uniform(
+            torch.tensor([0.], device=self.device) ,
+            torch.tensor([2.], device=self.device)
+        )
+        self.payload_target_rpy = torch.zeros(self.num_envs, 1, device=self.device)
         self.alpha = 0.8
 
         # self.last_cost_l = torch.zeros(self.num_envs, 1, device=self.device)
@@ -399,6 +403,7 @@ class Formation(IsaacEnv):
             obs_self_dim += self.time_encoding_dim
         payload_type_dim = len(Payload)
         obs_self_dim += payload_type_dim
+        # obs_self_dim +=1
         observation_spec = CompositeSpec({
             "obs_self": UnboundedContinuousTensorSpec((1, obs_self_dim)),
             "obs_others": UnboundedContinuousTensorSpec((self.drone.n-1, 13+1)),
@@ -446,6 +451,24 @@ class Formation(IsaacEnv):
         self.observation_spec["stats"] = stats_spec
         self.stats = stats_spec.zero()
 
+    def rotate_point(self, formation, angles):
+        # Create the rotation matrix
+
+        cos_angles = np.cos(angles).reshape(-1, 1, 1)  # Shape: (n, 1, 1)
+        sin_angles = np.sin(angles).reshape(-1, 1, 1)  # Shape: (n, 1, 1)
+
+
+        rotation_matrices = np.concatenate([
+        np.concatenate([cos_angles, -sin_angles], axis=2),  # First row: [cos, -sin]
+        np.concatenate([sin_angles, cos_angles], axis=2)    # Second row: [sin, cos]
+        ], axis=1)  # Final shape: (n, 2, 2)
+        # Represent the point as a vector
+        points = formation[:,:,:2].copy()
+        # Perform the rotation
+        rotated_points = np.einsum('nij,nkj->nki', rotation_matrices, points)
+        return_points = np.concatenate((rotated_points, formation[:,:,-1][...,np.newaxis]), axis=2)
+        return return_points
+
     def _reset_idx(self, env_ids: torch.Tensor):
         self.drone._reset_idx(env_ids)
         payloadIndex = np.random.randint(len(Payload), size=len(env_ids))
@@ -454,9 +477,11 @@ class Formation(IsaacEnv):
         payloadOneHot = np.zeros((len(env_ids),len(Payload)))
         payloadOneHot[np.arange(len(payloadOneHot)), payloadIndex] = 1
         self.envOneHot[env_ids] = torch.FloatTensor(payloadOneHot).to(self.device)
-
+        payload_target_rpy = self.payload_target_rpy_dist.sample(env_ids.shape)
+        self.payload_target_rpy[env_ids] = payload_target_rpy
+        
         ####### target payload
-        self.formation[env_ids] = torch.FloatTensor(MYFORMATION[payloadIndex]).to(self.device) ################# need to change formation format as tensor with index format
+        self.formation[env_ids] = torch.FloatTensor(self.rotate_point(MYFORMATION[payloadIndex],payload_target_rpy.cpu().detach().numpy())).to(self.device) ################# need to change formation format as tensor with index format
 
         self.formation[env_ids] += self.target_pos[env_ids]
         
@@ -486,7 +511,7 @@ class Formation(IsaacEnv):
 
         self.stats[env_ids] = 0.
 
-
+        
         init_distance = torch.norm(com_pos.mean(-2, keepdim=True) - self.target_pos[env_ids], dim=-1)
         self.init_distance[env_ids] = init_distance
         # print("self.init_distance", self.init_distance)  # ([100])
@@ -506,6 +531,7 @@ class Formation(IsaacEnv):
             t = (self.progress_buf / self.max_episode_length).reshape(-1, 1, 1)
             obs_self.append(t.expand(-1, self.drone.n, self.time_encoding_dim))
         obs_self.append(self.envOneHot.expand(self.drone.n, self.num_envs, len(Payload)).transpose(0, 1))
+        # obs_self.append(self.payload_target_rpy.expand(self.drone.n, self.num_envs, 1).transpose(0,1))
         obs_self = torch.cat(obs_self, dim=-1)
 
         relative_pos = torch.vmap(cpos)(pos, pos)
@@ -540,8 +566,8 @@ class Formation(IsaacEnv):
         cost_h = torch.vmap(cost_formation_hausdorff)(pos, self.formation).unsqueeze(dim=1)
         
         distance = torch.norm(pos.mean(-2, keepdim=True) - self.target_pos, dim=-1)
-
-        reward_formation =  3 / (1 + torch.square(cost_h * 1.6))
+        
+        reward_formation =  3 / (1 + torch.square(cost_h * 1.6)) 
         # reward_pos = 1 / (1 + cost_pos)
 
         # reward_formation = torch.exp(- cost_h * 1.6)

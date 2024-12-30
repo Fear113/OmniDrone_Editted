@@ -118,6 +118,7 @@ class Logistics(IsaacEnv):
             )
             stacked_payload.append(_payload)
 
+
         for i, group_snapshot in enumerate(self.initial_state.group_snapshots):
             drone_pos = self.groups[i].drones.get_state()[..., 0:3].squeeze(axis=0)
             drone_rot = self.groups[i].drones.get_state()[..., 3:7].squeeze(axis=0)
@@ -155,7 +156,7 @@ class Logistics(IsaacEnv):
                         elif group_snapshot.stage == Stage.POST_FORMATION:
                             world_transform_matrix = get_world_transform_matrix(self.groups[i].payloads[j])
                             temp_pos = world_transform_matrix.ExtractTranslation()
-                            temp_pos[2] += 1
+                            temp_pos[2] += 0.5
                             temp_quatd = world_transform_matrix.ExtractRotationQuat()
                             orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
 
@@ -203,7 +204,22 @@ class Logistics(IsaacEnv):
                             )
                             payloads.append(_payload)
                         else:
-                            raise NotImplementedError
+                            tempPayload_path = self.groups[i].payloads[j].GetPath()
+                            tempPayload = RigidPrimView(
+                                f"{tempPayload_path}",
+                                reset_xform_properties=False,
+                                track_contact_forces=False
+                            )
+                            current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
+
+                            _payload = DisconnectedPayload(
+                                payload.type,
+                                payload.target_pos,
+                                current_payload_pos.squeeze(axis=0),
+                                current_payload_rot.squeeze(axis=0)
+                            )
+                            payloads.append(_payload)
+                            # raise NotImplementedError
                     else:
                         tempPayload_path = self.groups[i].payloads[j].GetPath()
                         tempPayload = RigidPrimView(
@@ -309,9 +325,9 @@ class Logistics(IsaacEnv):
         payload_type = torch.zeros(self.num_groups, self.num_payloads_per_group)
         # for i in range(self.num_groups):
         #     payload_type[i] = torch.tensor([0,2,4])[torch.randperm(3)]
-        payload_type[0] = torch.tensor([0, 1, 3])
-        payload_type[1] = torch.tensor([3, 0, 1])
-        # payload_type[2] = torch.tensor([1, 3, 0])
+        payload_type[0] = torch.tensor([3, 0, 1])
+        payload_type[1] = torch.tensor([1, 3, 0])
+        payload_type[2] = torch.tensor([0, 1, 3])
 
         for i in range(self.num_groups):
             drone_pos = self.formation + self.group_offset[i]
@@ -376,7 +392,6 @@ class Logistics(IsaacEnv):
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
         cfg = drone_model.cfg_cls(force_sensor=self.cfg.task.force_sensor)
         scene_utils.design_scene()
-
         payload_types = [Payload.A1.value, Payload.B1.value, Payload.D1.value]
         for p in payload_types:
             target = np.array(p.target_pos)
@@ -395,7 +410,6 @@ class Logistics(IsaacEnv):
             colors = [(1.0, 1.0, 1.0, 1.0) for _ in range(len(point_list_0))]
             sizes = [5 for _ in range(len(point_list_0))]
             self.draw.draw_lines(point_list_0, point_list_1, colors, sizes)
-
         if self.enable_background:
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A1.usd"
@@ -416,7 +430,7 @@ class Logistics(IsaacEnv):
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A6.usd"
             prim_utils.create_prim("/World/envs/Rack6", usd_path=asset_path, translation=(-23, 18, 0), scale=(0.01, 0.01, 0.01))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/warehouse_test.usd"
-            prim_utils.create_prim("/World/envs/Warehouse", usd_path=asset_path, translation=(0, 18, 0.01), scale=(0.04, 0.04, 0.04))
+            prim_utils.create_prim("/World/envs/Warehouse", usd_path=asset_path, translation=(30,53, 0.01), scale=(0.23, 0.23, 0.04))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A6.usd"
             prim_utils.create_prim("/World/envs/Rack7", usd_path=asset_path, translation=(-23, 24, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
@@ -443,7 +457,7 @@ class Logistics(IsaacEnv):
 
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
-            prim_utils.create_prim("/World/envs/Rack17", usd_path=asset_path, translation=(-30, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack17", usd_path=asset_path, translation=(-36, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
             prim_utils.create_prim("/World/envs/Rack18", usd_path=asset_path, translation=(-24, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
@@ -458,6 +472,110 @@ class Logistics(IsaacEnv):
             prim_utils.create_prim("/World/envs/Rack23", usd_path=asset_path, translation=(24, -9, 0), scale=(0.01, 0.01, 0.01))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
             prim_utils.create_prim("/World/envs/Rack24", usd_path=asset_path, translation=(24, 9, 0), scale=(0.01, 0.01, 0.01))
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack25", usd_path=asset_path, translation=(-42, 15, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack26", usd_path=asset_path, translation=(-42, 24, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack27", usd_path=asset_path, translation=(-42, 9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack28", usd_path=asset_path, translation=(-42, 0, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack29", usd_path=asset_path, translation=(-42, -9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack30", usd_path=asset_path, translation=(-54, 15, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack31", usd_path=asset_path, translation=(-54, 24, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack32", usd_path=asset_path, translation=(-54, 9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack33", usd_path=asset_path, translation=(-54, 0, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack34", usd_path=asset_path, translation=(-54, -9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack35", usd_path=asset_path, translation=(-66, 15, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack36", usd_path=asset_path, translation=(-66, 24, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack37", usd_path=asset_path, translation=(-66, 9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack38", usd_path=asset_path, translation=(-66, 0, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack39", usd_path=asset_path, translation=(-66, -9, 0), scale=(0.01, 0.01, 0.01))
+
+
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
+            prim_utils.create_prim("/World/envs/Rack40", usd_path=asset_path, translation=(-48, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack41", usd_path=asset_path, translation=(-60, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
+            prim_utils.create_prim("/World/envs/Rack42", usd_path=asset_path, translation=(-72, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
+            prim_utils.create_prim("/World/envs/Rack43", usd_path=asset_path, translation=(-84, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack44", usd_path=asset_path, translation=(-96, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A1.usd"
+            prim_utils.create_prim("/World/envs/Rack45", usd_path=asset_path, translation=(-24, -18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A2.usd"
+            prim_utils.create_prim("/World/envs/Rack46", usd_path=asset_path, translation=(-12, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A3.usd"
+            prim_utils.create_prim("/World/envs/Rack47", usd_path=asset_path, translation=( 0, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A1.usd"
+            prim_utils.create_prim("/World/envs/Rack48", usd_path=asset_path, translation=(-36, -18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A2.usd"
+            prim_utils.create_prim("/World/envs/Rack49", usd_path=asset_path, translation=(-48, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A3.usd"
+            prim_utils.create_prim("/World/envs/Rack50", usd_path=asset_path, translation=( -60, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A1.usd"
+            prim_utils.create_prim("/World/envs/Rack51", usd_path=asset_path, translation=(-72, -18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A2.usd"
+            prim_utils.create_prim("/World/envs/Rack52", usd_path=asset_path, translation=(-84, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A3.usd"
+            prim_utils.create_prim("/World/envs/Rack53", usd_path=asset_path, translation=( -96, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack54", usd_path=asset_path, translation=(-78, 15, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack55", usd_path=asset_path, translation=(-78, 24, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack56", usd_path=asset_path, translation=(-78, 9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack57", usd_path=asset_path, translation=(-78, 0, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack58", usd_path=asset_path, translation=(-78, -9, 0), scale=(0.01, 0.01, 0.01))
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack59", usd_path=asset_path, translation=(-90, 15, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack60", usd_path=asset_path, translation=(-90, 24, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack61", usd_path=asset_path, translation=(-90, 9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack62", usd_path=asset_path, translation=(-90, 0, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack63", usd_path=asset_path, translation=(-90, -9, 0), scale=(0.01, 0.01, 0.01))
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A7.usd"
+            prim_utils.create_prim("/World/envs/Rack64", usd_path=asset_path, translation=(-9, 18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A8.usd"
+            prim_utils.create_prim("/World/envs/Rack65", usd_path=asset_path, translation=(3, 18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack66", usd_path=asset_path, translation=(15, 18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A1.usd"
+            prim_utils.create_prim("/World/envs/Rack67", usd_path=asset_path, translation=(21, 18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A7.usd"
+            prim_utils.create_prim("/World/envs/Rack68", usd_path=asset_path, translation=(-9, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A8.usd"
+            prim_utils.create_prim("/World/envs/Rack69", usd_path=asset_path, translation=(3, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack70", usd_path=asset_path, translation=(15, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A1.usd"
+            prim_utils.create_prim("/World/envs/Rack71", usd_path=asset_path, translation=(21, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
 
         for i, group_snapshot in enumerate(self.initial_state.group_snapshots):
             drones = drone_model(cfg=cfg)
@@ -481,23 +599,23 @@ class Logistics(IsaacEnv):
                     name = payload.detail().name
                 )
 
-                DynamicCuboid(
-                    "/World/envs/env_0/payloadTargetVis{}".format(i),
-                    position=group_snapshot.target_payload().target_pos,
-                    scale=group_snapshot.target_payload().detail().shadow_scale,
-                    orientation=group_snapshot.target_payload().type.value.target_rot,
-                    color=torch.tensor([0.8, 0.1, 0.1]),
-                    size=2.01,
-                )
+                # DynamicCuboid(
+                #     "/World/envs/env_0/payloadTargetVis{}".format(i),
+                #     position=group_snapshot.target_payload().target_pos,
+                #     scale=group_snapshot.target_payload().detail().shadow_scale,
+                #     orientation=group_snapshot.target_payload().type.value.target_rot,
+                #     color=torch.tensor([0.8, 0.1, 0.1]),
+                #     size=2.01,
+                # )
 
-                kit_utils.set_collision_properties(
-                    "/World/envs/env_0/payloadTargetVis{}".format(i),
-                    collision_enabled=False
-                )
-                kit_utils.set_rigid_body_properties(
-                    "/World/envs/env_0/payloadTargetVis{}".format(i),
-                    disable_gravity=True
-                )
+                # kit_utils.set_collision_properties(
+                #     "/World/envs/env_0/payloadTargetVis{}".format(i),
+                #     collision_enabled=False
+                # )
+                # kit_utils.set_rigid_body_properties(
+                #     "/World/envs/env_0/payloadTargetVis{}".format(i),
+                #     disable_gravity=True
+                # )
             else:
                 prim_utils.create_prim(group_prim_path)  # xform
                 drone_prim_paths = [f"{group_prim_path}/{drones.name.lower()}_{j}" for j in
@@ -517,7 +635,6 @@ class Logistics(IsaacEnv):
                     payloads.append(None)
 
             self.groups.append(Group(drones, payloads, transport))
-
         group_prim_path = f"/World/envs/env_0/stacked"
         for i, payload in enumerate(self.initial_state.stacked_payload):
             p = self.create_payload(payload.payload_pos,
@@ -526,7 +643,6 @@ class Logistics(IsaacEnv):
                                 payload.detail().scale,
                                 payload.payload_rot)
             self.stacked.append(p)
-
 
     def _reset_idx(self, env_ids: torch.Tensor):
         for i, group in enumerate(self.groups):
@@ -740,9 +856,9 @@ class Logistics(IsaacEnv):
             elif group_snapshot.stage == Stage.POST_FORMATION:
                 self.count[i] += 1
                 if group_snapshot.n_done > 0:
-                    terminated = (self.count[i] > 70)
+                    terminated = (self.count[i] > 50)
                 else:
-                    terminated = (self.count[i] > 70 + 10 * i)
+                    terminated = (self.count[i] > 50 + 10 * i)
                 # terminated = True
             elif group_snapshot.stage == Stage.PRE_TRANSPORT:
                 self.count[i] += 1
@@ -769,7 +885,8 @@ class Logistics(IsaacEnv):
                     self.count[i] += 1
                 terminated = (self.count[i] > 5)
             else:
-                raise NotImplementedError
+                terminated = False
+                # raise NotImplementedError
 
             truncated = (self.progress_buf >= self.max_episode_length)
 
