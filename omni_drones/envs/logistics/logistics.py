@@ -54,6 +54,7 @@ from omni.kit.commands import execute
 from omni.usd import get_world_transform_matrix
 from omni.isaac.core.objects import DynamicSphere
 from omni_drones.robots.robot import ASSET_PATH
+from omni.isaac.debug_draw import _debug_draw
 
 @dataclass
 class Group:
@@ -71,6 +72,7 @@ class Logistics(IsaacEnv):
         self.num_drones_per_group = cfg.task.num_drones_per_group
         self.drone_num = self.num_drones_per_group * self.num_groups
         self.groups = []
+        self.stacked = []
         self.enable_background = cfg.task.enable_background
         drone_formation = torch.tensor([
             [-0.5, -0.5, 1.0],
@@ -81,9 +83,11 @@ class Logistics(IsaacEnv):
         self.formation = drone_formation
         self.group_offset = self.make_group_offset()
         self.payload_offset = self.make_payload_offset()
-        self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
         self.done_group = None
-        self.done_payloads = self.initial_state.done_payloads
+        self.done_payloads = initial_state.done_payloads if initial_state is not None else {payload.name: 0 for payload in Payload}
+        self.initial_state = initial_state if initial_state is not None else self.make_initial_state()
+        self.draw = _debug_draw.acquire_debug_draw_interface()
+        
 
         super().__init__(cfg, headless)
 
@@ -98,6 +102,22 @@ class Logistics(IsaacEnv):
 
     def snapshot_state(self):
         group_snapshots = []
+        stacked_payload = []
+
+        for i, payload in enumerate(self.initial_state.stacked_payload):
+            view = RigidPrimView(
+                f"{self.stacked[i].GetPath()}",
+                reset_xform_properties=False,
+                track_contact_forces=False
+            )
+            current_payload_pos, current_payload_rot = self.get_env_poses(view.get_world_poses())
+            _payload = DisconnectedPayload(
+                payload.type,
+                payload.target_pos,
+                current_payload_pos.squeeze(axis=0),
+                current_payload_rot.squeeze(axis=0)
+            )
+            stacked_payload.append(_payload)
 
 
         for i, group_snapshot in enumerate(self.initial_state.group_snapshots):
@@ -105,15 +125,15 @@ class Logistics(IsaacEnv):
             drone_rot = self.groups[i].drones.get_state()[..., 3:7].squeeze(axis=0)
             drone_vel = self.groups[i].drones.get_state()[..., 7:13].squeeze(axis=0)
             count = self.count[i]
+            n_done = group_snapshot.n_done
 
             if self.done_group == i:
                 drone_rot = torch.zeros((self.num_drones_per_group, 4), device=self.device)
                 drone_rot[:, 0] = 1
                 drone_vel = torch.zeros((self.num_drones_per_group, 6), device=self.device)
                 count = 0
-
-                stage = group_snapshot.stage.next()
                 target_payload_idx = group_snapshot.target_payload_idx
+                stage = group_snapshot.stage.next(target_payload_idx)
                 payloads = []
                 for j, payload in enumerate(group_snapshot.payloads):
                     if target_payload_idx == j:
@@ -136,11 +156,14 @@ class Logistics(IsaacEnv):
                         elif group_snapshot.stage == Stage.POST_FORMATION:
                             world_transform_matrix = get_world_transform_matrix(self.groups[i].payloads[j])
                             temp_pos = world_transform_matrix.ExtractTranslation()
-                            temp_pos[2] += 1
+                            temp_pos[2] += 0.5
                             temp_quatd = world_transform_matrix.ExtractRotationQuat()
                             orient = np.insert(np.array(temp_quatd.imaginary), 0, temp_quatd.real)
-                            target_pos = payload.target_pos
-                            target_pos = (target_pos[0] + self.done_payloads[payload.detail().name] * 3.0, target_pos[1], target_pos[2])
+
+                            target_pos = self.get_target_pos(payload.type)
+                            # target_pos = (target_pos[0] , target_pos[1], target_pos[2]+ self.done_payloads[payload.detail().name] * 1.5)
+                            self.done_payloads[payload.detail().name] += 1
+
                             _payload = ConnectedPayload(
                                 payload.type,
                                 target_pos,
@@ -156,12 +179,10 @@ class Logistics(IsaacEnv):
                             vel = self.groups[i].transport.get_velocities(True)
                             joint_pos = self.groups[i].transport.get_joint_positions(True)
                             joint_vel = self.groups[i].transport.get_joint_velocities(True)
-                            target_pos = payload.target_pos
-                            target_pos = (target_pos[0] + self.done_payloads[payload.detail().name] * 3.0, target_pos[1], target_pos[2])
 
                             payloads.append(ConnectedPayload(
                                 payload.type,
-                                target_pos,
+                                payload.target_pos,
                                 pos.squeeze(axis=0),
                                 rot.squeeze(axis=0),
                                 vel.squeeze(axis=0),
@@ -169,7 +190,7 @@ class Logistics(IsaacEnv):
                                 joint_vel.squeeze(axis=0)
                             ))
                         elif group_snapshot.stage == Stage.TRANSPORT:
-                            self.done_payloads[payload.detail().name] += 1
+                            n_done += 1
                             tempPayload = self.groups[i].transport.payload_view
                             current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
 
@@ -184,7 +205,22 @@ class Logistics(IsaacEnv):
                             )
                             payloads.append(_payload)
                         else:
-                            raise NotImplementedError
+                            tempPayload_path = self.groups[i].payloads[j].GetPath()
+                            tempPayload = RigidPrimView(
+                                f"{tempPayload_path}",
+                                reset_xform_properties=False,
+                                track_contact_forces=False
+                            )
+                            current_payload_pos, current_payload_rot = self.get_env_poses(tempPayload.get_world_poses())
+
+                            _payload = DisconnectedPayload(
+                                payload.type,
+                                payload.target_pos,
+                                current_payload_pos.squeeze(axis=0),
+                                current_payload_rot.squeeze(axis=0)
+                            )
+                            payloads.append(_payload)
+                            # raise NotImplementedError
                     else:
                         tempPayload_path = self.groups[i].payloads[j].GetPath()
                         tempPayload = RigidPrimView(
@@ -202,7 +238,7 @@ class Logistics(IsaacEnv):
                         )
                         payloads.append(_payload)
                 if group_snapshot.stage == Stage.TRANSPORT:
-                    target_payload_idx = group_snapshot.target_payload_idx + 1 if group_snapshot.target_payload_idx < self.num_payloads_per_group - 1 else group_snapshot.target_payload_idx
+                    target_payload_idx = group_snapshot.target_payload_idx + 1 if group_snapshot.target_payload_idx < self.num_payloads_per_group - 1 else -1
             else:
                 stage = group_snapshot.stage
                 target_payload_idx = group_snapshot.target_payload_idx
@@ -252,17 +288,18 @@ class Logistics(IsaacEnv):
                 target_payload_idx,
                 stage,
                 count,
-                payloads
+                payloads,
+                n_done
             )
 
             group_snapshots.append(group_snapshot)
 
-        return StateSnapshot(group_snapshots, self.done_payloads)
+        return StateSnapshot(group_snapshots, stacked_payload, self.done_payloads)
 
     def make_group_offset(self):
-        group_interval = 3
+        group_interval = 10
         group_offset = torch.zeros(self.num_groups, 3, device=self.device)
-        group_offset[:, 0] = torch.arange(start=-6, end=-6-(group_interval * self.num_groups), step=-group_interval,
+        group_offset[:, 0] = torch.arange(start=0, end=-(group_interval * self.num_groups), step=-group_interval,
                                           device=self.device)
 
         return group_offset
@@ -270,14 +307,14 @@ class Logistics(IsaacEnv):
     def make_payload_offset(self):
         payload_offset = []
         for i in range(self.num_payloads_per_group):
-            payload_position = [6 - i * 3, -9, 0]
+            payload_position = [6 - i * 3, -10, 0]
             payload_offset.append(payload_position)
         return torch.FloatTensor(payload_offset).to(device=self.device)
 
     def make_initial_state(self):
         payload_pos_dist = D.Uniform(
-            torch.tensor([-0.5, -0.5, 0], device=self.device),
-            torch.tensor([0.5, 0.5, 0], device=self.device)
+            torch.tensor([-2., -2., 0], device=self.device),
+            torch.tensor([2., 2., 0], device=self.device)
         )
         
         payload_rpy_dist = D.Uniform(
@@ -288,9 +325,10 @@ class Logistics(IsaacEnv):
         groups = []
         payload_type = torch.zeros(self.num_groups, self.num_payloads_per_group)
         # for i in range(self.num_groups):
-        #     payload_type[i] = torch.randperm(Payload.__len__())[:self.num_payloads_per_group]
-        payload_type[0] = torch.tensor([4])
-        payload_type[1] = torch.tensor([4])
+        #     payload_type[i] = torch.tensor([0,2,4])[torch.randperm(3)]
+        payload_type[0] = torch.tensor([3, 0, 1])
+        payload_type[1] = torch.tensor([1, 3, 0])
+        payload_type[2] = torch.tensor([0, 1, 3])
 
         for i in range(self.num_groups):
             drone_pos = self.formation + self.group_offset[i]
@@ -313,25 +351,70 @@ class Logistics(IsaacEnv):
                 elif payload.name == "A2" or payload.name == "B2" or payload.name == "CA2" or payload.name == "CB2":
                     payload_pos[2] = 0.0625
                 payload_rot = euler_to_quaternion(payload_rpy_dist.sample())
-                target_pos = payload.value.target_pos
-                target_pos = (target_pos[0] - i * 3.0, target_pos[1], target_pos[2]+0.5)
-                payloads.append(DisconnectedPayload(payload, target_pos, payload_pos, payload_rot))
+                payloads.append(DisconnectedPayload(payload, payload.value.target_pos, payload_pos, payload_rot))
 
             groups.append(
-                GroupSnapshot(drone_pos, drone_rot, drone_vel, target_payload_idx, stage, count, payloads)
+                GroupSnapshot(drone_pos, drone_rot, drone_vel, target_payload_idx, stage, count, payloads, 0)
             )
-        done_payloads = {payload.name: 0 for payload in Payload}
-        return StateSnapshot(groups, done_payloads)
+        
+        _stacked_payloads = [
+            Payload.get(0),
+            Payload.get(0),
+            Payload.get(1),
+            Payload.get(3),
+            Payload.get(3),
+            Payload.get(3),
+        ]
+        stacked_payloads = []
+        for payload in _stacked_payloads:
+            stacked_payloads.append(
+                DisconnectedPayload(
+                    payload,
+                    self.get_target_pos(payload),
+                    torch.tensor(self.get_target_pos(payload), device=self.device),
+                    euler_to_quaternion(payload_rpy_dist.sample())
+                )
+            )
+            self.done_payloads[payload.name] += 1
+
+        return StateSnapshot(groups, stacked_payloads, self.done_payloads)
+
+    def get_target_pos(self, payload):
+        n_done = self.done_payloads[payload.value.name]
+        target_pos = payload.value.target_pos
+        height = payload.value.height
+        x = target_pos[1]
+        y = (n_done // 3) * 3 + target_pos[0]
+        z = (n_done % 3) * (height+0.1)
+
+        return y, x, z
 
     def _design_scene(self) -> Optional[List[str]]:
         drone_model = MultirotorBase.REGISTRY[self.cfg.task.drone_model]
         cfg = drone_model.cfg_cls(force_sensor=self.cfg.task.force_sensor)
         scene_utils.design_scene()
-
+        payload_types = [Payload.A1.value, Payload.B1.value, Payload.D1.value]
+        for p in payload_types:
+            target = np.array(p.target_pos)
+            # A1_area = [(3, 3, 5), (3, 6, 5), (6, 3, 5), (6, 6, 5), (3, 3, 5)]
+            guide_lines = np.array([
+                [-2, -2, 0],
+                [5, -2, 0],
+                [5, 2, 0],
+                [-2, 2, 0],
+                [-2, -2, 0]
+            ])
+            _area = target + guide_lines
+            area = [tuple(e) for e in _area]
+            point_list_0 = area[:-1]
+            point_list_1 = area[1:]
+            colors = [(1.0, 1.0, 1.0, 1.0) for _ in range(len(point_list_0))]
+            sizes = [5 for _ in range(len(point_list_0))]
+            self.draw.draw_lines(point_list_0, point_list_1, colors, sizes)
         if self.enable_background:
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A1.usd"
-            prim_utils.create_prim("/World/envs/Rack1", usd_path=asset_path, translation=(-18, -18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack1", usd_path=asset_path, translation=(-23, -18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A2.usd"
             prim_utils.create_prim("/World/envs/Rack2", usd_path=asset_path, translation=(-9, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
@@ -340,18 +423,18 @@ class Logistics(IsaacEnv):
             prim_utils.create_prim("/World/envs/Rack3", usd_path=asset_path, translation=(3, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A4.usd"
-            prim_utils.create_prim("/World/envs/Rack4", usd_path=asset_path, translation=(-18, -6, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack4", usd_path=asset_path, translation=(-23, -6, 0), scale=(0.01, 0.01, 0.01))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A5.usd"
-            prim_utils.create_prim("/World/envs/Rack5", usd_path=asset_path, translation=(-18, 6, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack5", usd_path=asset_path, translation=(-23, 6, 0), scale=(0.01, 0.01, 0.01))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A6.usd"
-            prim_utils.create_prim("/World/envs/Rack6", usd_path=asset_path, translation=(-18, 18, 0), scale=(0.01, 0.01, 0.01))
+            prim_utils.create_prim("/World/envs/Rack6", usd_path=asset_path, translation=(-23, 18, 0), scale=(0.01, 0.01, 0.01))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/warehouse_test.usd"
-            prim_utils.create_prim("/World/envs/Warehouse", usd_path=asset_path, translation=(0, 18, 0.01), scale=(0.04, 0.04, 0.04))
+            prim_utils.create_prim("/World/envs/Warehouse", usd_path=asset_path, translation=(30,53, 0.01), scale=(0.23, 0.23, 0.04))
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A6.usd"
-            prim_utils.create_prim("/World/envs/Rack7", usd_path=asset_path, translation=(-18, 24, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack7", usd_path=asset_path, translation=(-23, 24, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A7.usd"
             prim_utils.create_prim("/World/envs/Rack8", usd_path=asset_path, translation=(-9, 24, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A8.usd"
@@ -375,7 +458,7 @@ class Logistics(IsaacEnv):
 
 
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
-            prim_utils.create_prim("/World/envs/Rack17", usd_path=asset_path, translation=(-30, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            prim_utils.create_prim("/World/envs/Rack17", usd_path=asset_path, translation=(-36, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
             prim_utils.create_prim("/World/envs/Rack18", usd_path=asset_path, translation=(-24, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
@@ -390,6 +473,110 @@ class Logistics(IsaacEnv):
             prim_utils.create_prim("/World/envs/Rack23", usd_path=asset_path, translation=(24, -9, 0), scale=(0.01, 0.01, 0.01))
             asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
             prim_utils.create_prim("/World/envs/Rack24", usd_path=asset_path, translation=(24, 9, 0), scale=(0.01, 0.01, 0.01))
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack25", usd_path=asset_path, translation=(-42, 15, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack26", usd_path=asset_path, translation=(-42, 24, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack27", usd_path=asset_path, translation=(-42, 9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack28", usd_path=asset_path, translation=(-42, 0, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack29", usd_path=asset_path, translation=(-42, -9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack30", usd_path=asset_path, translation=(-54, 15, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack31", usd_path=asset_path, translation=(-54, 24, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack32", usd_path=asset_path, translation=(-54, 9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack33", usd_path=asset_path, translation=(-54, 0, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack34", usd_path=asset_path, translation=(-54, -9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack35", usd_path=asset_path, translation=(-66, 15, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack36", usd_path=asset_path, translation=(-66, 24, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack37", usd_path=asset_path, translation=(-66, 9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack38", usd_path=asset_path, translation=(-66, 0, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack39", usd_path=asset_path, translation=(-66, -9, 0), scale=(0.01, 0.01, 0.01))
+
+
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
+            prim_utils.create_prim("/World/envs/Rack40", usd_path=asset_path, translation=(-48, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack41", usd_path=asset_path, translation=(-60, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
+            prim_utils.create_prim("/World/envs/Rack42", usd_path=asset_path, translation=(-72, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A8.usd"
+            prim_utils.create_prim("/World/envs/Rack43", usd_path=asset_path, translation=(-84, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack44", usd_path=asset_path, translation=(-96, -30, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A1.usd"
+            prim_utils.create_prim("/World/envs/Rack45", usd_path=asset_path, translation=(-24, -18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A2.usd"
+            prim_utils.create_prim("/World/envs/Rack46", usd_path=asset_path, translation=(-12, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A3.usd"
+            prim_utils.create_prim("/World/envs/Rack47", usd_path=asset_path, translation=( 0, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A1.usd"
+            prim_utils.create_prim("/World/envs/Rack48", usd_path=asset_path, translation=(-36, -18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A2.usd"
+            prim_utils.create_prim("/World/envs/Rack49", usd_path=asset_path, translation=(-48, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A3.usd"
+            prim_utils.create_prim("/World/envs/Rack50", usd_path=asset_path, translation=( -60, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A1.usd"
+            prim_utils.create_prim("/World/envs/Rack51", usd_path=asset_path, translation=(-72, -18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A2.usd"
+            prim_utils.create_prim("/World/envs/Rack52", usd_path=asset_path, translation=(-84, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A3.usd"
+            prim_utils.create_prim("/World/envs/Rack53", usd_path=asset_path, translation=( -96, -18, 0), scale=(0.01, 0.01, 0.01),orientation = (0.7071068, 0, 0, 0.7071068))
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack54", usd_path=asset_path, translation=(-78, 15, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack55", usd_path=asset_path, translation=(-78, 24, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack56", usd_path=asset_path, translation=(-78, 9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack57", usd_path=asset_path, translation=(-78, 0, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack58", usd_path=asset_path, translation=(-78, -9, 0), scale=(0.01, 0.01, 0.01))
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack59", usd_path=asset_path, translation=(-90, 15, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack60", usd_path=asset_path, translation=(-90, 24, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack61", usd_path=asset_path, translation=(-90, 9, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack62", usd_path=asset_path, translation=(-90, 0, 0), scale=(0.01, 0.01, 0.01))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack63", usd_path=asset_path, translation=(-90, -9, 0), scale=(0.01, 0.01, 0.01))
+
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A7.usd"
+            prim_utils.create_prim("/World/envs/Rack64", usd_path=asset_path, translation=(-9, 18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A8.usd"
+            prim_utils.create_prim("/World/envs/Rack65", usd_path=asset_path, translation=(3, 18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack66", usd_path=asset_path, translation=(15, 18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A1.usd"
+            prim_utils.create_prim("/World/envs/Rack67", usd_path=asset_path, translation=(21, 18, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A7.usd"
+            prim_utils.create_prim("/World/envs/Rack68", usd_path=asset_path, translation=(-9, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A8.usd"
+            prim_utils.create_prim("/World/envs/Rack69", usd_path=asset_path, translation=(3, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLarge_A9.usd"
+            prim_utils.create_prim("/World/envs/Rack70", usd_path=asset_path, translation=(15, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
+            asset_path = ASSET_PATH + "/industry_usd/Warehouse/Racks/RackLong_A1.usd"
+            prim_utils.create_prim("/World/envs/Rack71", usd_path=asset_path, translation=(21, 12, 0), scale=(0.01, 0.01, 0.01), orientation = (0.7071068, 0, 0, 0.7071068))
 
         for i, group_snapshot in enumerate(self.initial_state.group_snapshots):
             drones = drone_model(cfg=cfg)
@@ -413,22 +600,23 @@ class Logistics(IsaacEnv):
                     name = payload.detail().name
                 )
 
-                DynamicCuboid(
-                    "/World/envs/env_0/payloadTargetVis{}".format(i),
-                    position=group_snapshot.target_payload().target_pos,
-                    scale=group_snapshot.target_payload().detail().shadow_scale,
-                    orientation=(1., 0, 0, 0),
-                    color=torch.tensor([0.8, 0.1, 0.1]),
-                    size=2.01,
-                )
-                kit_utils.set_collision_properties(
-                    "/World/envs/env_0/payloadTargetVis{}".format(i),
-                    collision_enabled=False
-                )
-                kit_utils.set_rigid_body_properties(
-                    "/World/envs/env_0/payloadTargetVis{}".format(i),
-                    disable_gravity=True
-                )
+                # DynamicCuboid(
+                #     "/World/envs/env_0/payloadTargetVis{}".format(i),
+                #     position=group_snapshot.target_payload().target_pos,
+                #     scale=group_snapshot.target_payload().detail().shadow_scale,
+                #     orientation=group_snapshot.target_payload().type.value.target_rot,
+                #     color=torch.tensor([0.8, 0.1, 0.1]),
+                #     size=2.01,
+                # )
+
+                # kit_utils.set_collision_properties(
+                #     "/World/envs/env_0/payloadTargetVis{}".format(i),
+                #     collision_enabled=False
+                # )
+                # kit_utils.set_rigid_body_properties(
+                #     "/World/envs/env_0/payloadTargetVis{}".format(i),
+                #     disable_gravity=True
+                # )
             else:
                 prim_utils.create_prim(group_prim_path)  # xform
                 drone_prim_paths = [f"{group_prim_path}/{drones.name.lower()}_{j}" for j in
@@ -448,6 +636,14 @@ class Logistics(IsaacEnv):
                     payloads.append(None)
 
             self.groups.append(Group(drones, payloads, transport))
+        group_prim_path = f"/World/envs/env_0/stacked"
+        for i, payload in enumerate(self.initial_state.stacked_payload):
+            p = self.create_payload(payload.payload_pos,
+                                f"{group_prim_path}/payload_{i}",
+                                payload.detail().usd_path,
+                                payload.detail().scale,
+                                payload.payload_rot)
+            self.stacked.append(p)
 
     def _reset_idx(self, env_ids: torch.Tensor):
         for i, group in enumerate(self.groups):
@@ -541,7 +737,7 @@ class Logistics(IsaacEnv):
         pos = self.groups[group_idx].drones.pos
         payload = group_snapshot.payloads[group_snapshot.target_payload_idx]
         target_pos = payload.payload_pos.clone().detach()
-        target_pos[2] += 1
+        target_pos[2] += 1.1
         root_states[..., :3] = target_pos - pos
 
         self.envOneHot = torch.zeros(self.num_envs, len(Payload), device=self.device)
@@ -557,8 +753,6 @@ class Logistics(IsaacEnv):
             obs_self.append(t.expand(-1, self.num_drones_per_group, self.time_encoding_dim))
         obs_self.append(self.envOneHot.expand(self.drone_num // len(self.groups), self.num_envs, len(Payload)).transpose(0, 1))
         obs_self = torch.cat(obs_self, dim=-1)
-
-
 
         relative_pos = torch.vmap(cpos)(pos, pos)
         drone_pdist = torch.vmap(off_diag)(torch.norm(relative_pos, dim=-1, keepdim=True))
@@ -604,8 +798,8 @@ class Logistics(IsaacEnv):
         payload_drone_rpos = payload_pos.unsqueeze(1) - drone_pos
 
         payload_target_pos = torch.tensor(group_snapshot.payloads[group_snapshot.target_payload_idx].target_pos, device=self.device)
-        payload_target_rot = torch.FloatTensor([1,0,0,0]).to(self.device)
-        payload_target_heading = quat_axis(payload_target_rot.unsqueeze(0), axis=0)
+        payload_target_rot = torch.tensor(group_snapshot.payloads[group_snapshot.target_payload_idx].type.value.target_rot, device=self.device)
+        payload_target_heading = quat_axis(payload_target_rot.unsqueeze(0), 0)
 
         target_payload_rpose = torch.cat([
             payload_target_pos - payload_pos,
@@ -646,6 +840,7 @@ class Logistics(IsaacEnv):
             }
         }, self.num_envs)
 
+
     def _compute_reward_and_done(self):
         done = False
         for i, group_snapshot in enumerate(self.initial_state.group_snapshots):
@@ -655,13 +850,17 @@ class Logistics(IsaacEnv):
                 target_pos = payload.payload_pos.clone().detach()
                 target_pos[2] += 1
                 distance = torch.norm(pos.mean(-2).squeeze(0) - target_pos, dim=-1)
-                # terminated = (distance < 0.25)
-                if distance < 0.496:
+                # terminated = True
+                if distance < 0.2:
                     self.count[i] += 1
                 terminated = (self.count[i] > 0)
             elif group_snapshot.stage == Stage.POST_FORMATION:
                 self.count[i] += 1
-                terminated = (self.count[i] > 70)
+                if group_snapshot.n_done > 0:
+                    terminated = (self.count[i] > 50)
+                else:
+                    terminated = (self.count[i] > 50 + 10 * i)
+                # terminated = True
             elif group_snapshot.stage == Stage.PRE_TRANSPORT:
                 self.count[i] += 1
                 terminated = (self.count[i] > 150)
@@ -681,11 +880,14 @@ class Logistics(IsaacEnv):
 
                 p_distance = torch.norm(target_payload_rpose, dim=-1, keepdim=True)
 
-                if p_distance < 1.004:
+                # self.count[i] += 1
+                # terminated = (self.count[i] > 10)
+                if p_distance < 1.003:
                     self.count[i] += 1
                 terminated = (self.count[i] > 5)
             else:
-                raise NotImplementedError
+                terminated = False
+                # raise NotImplementedError
 
             truncated = (self.progress_buf >= self.max_episode_length)
 

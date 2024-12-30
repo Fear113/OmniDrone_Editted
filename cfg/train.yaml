@@ -7,13 +7,13 @@ env: ${task.env}
 
 total_frames: 600_000_000
 max_iters: -1
-eval_interval: -1
+eval_interval: 10000
 save_interval: 10000
-seed: 1
+seed: 2
 
 viewer:
   resolution: [960, 720]
-  eye: [30., 0., 18.]
+  eye: [30., 0., 24.]
   lookat: [0., 0., 1.]
 
 wandb:
@@ -28,6 +28,6 @@ wandb:
   tags: 
 
 defaults:
-  - task: Formation
+  - task: Logistics
   - algo: mappo
   - _self_

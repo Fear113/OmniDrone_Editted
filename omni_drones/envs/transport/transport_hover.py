@@ -163,7 +163,7 @@ class TransportHover(IsaacEnv):
             disable_gravity=True
         )
 
-        self.group.spawn(translations=[(0, 0, 2.5)], enable_collision=False, name='D1', payload_usd=Payload.D1.value.usd_path, payload_scale = Payload.D1.value.scale)
+        self.group.spawn(translations=[(0, 0, 2.5)], enable_collision=False, name='B1', payload_usd=Payload.B1.value.usd_path, payload_scale = Payload.B1.value.scale)
         return ["/World/defaultGroundPlane"]
 
     def _set_specs(self):
@@ -387,7 +387,7 @@ class TransportHover(IsaacEnv):
         reward_action_smoothness = self.reward_action_smoothness_weight * -self.drone.throttle_difference
 
         reward[:] = (
-                reward_separation * (
+                reward_separation* heading_distance_ratio * (
                 # 1 * reward_pose
                 # + reward_pose * (reward_up + reward_spin + reward_swing)
 

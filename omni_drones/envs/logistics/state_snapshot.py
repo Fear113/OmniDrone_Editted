@@ -1,3 +1,4 @@
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -13,8 +14,11 @@ class Stage(Enum):
     PRE_TRANSPORT=2
     TRANSPORT=3
 
-    def next(self):
-        return Stage((self.value + 1) % Stage.__len__())
+    def next(self, idx):
+        if idx ==-1:
+            return Stage.__len__() +1
+        else:
+            return Stage((self.value + 1) % Stage.__len__())
 
 @dataclass
 class _Payload:
@@ -46,6 +50,7 @@ class GroupSnapshot:
     stage: Stage
     count: int
     payloads: list[ConnectedPayload | DisconnectedPayload]
+    n_done: int
 
     def target_payload(self):
         return self.payloads[self.target_payload_idx]
@@ -53,4 +58,5 @@ class GroupSnapshot:
 @dataclass
 class StateSnapshot:
     group_snapshots: list[GroupSnapshot]
+    stacked_payload: list[DisconnectedPayload]
     done_payloads: dict[str, int]

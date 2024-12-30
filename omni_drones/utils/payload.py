@@ -17,14 +17,14 @@ class PayloadInfo:
     target_pos: tuple[float, float, float]
     target_rot: tuple[float, float, float, float]
     name: str
+    height: float
 
 class Payload(Enum):
-    A1 = PayloadInfo(   f"{wooden_dir}/WoodenCrate_A1.usd", (0.01, 0.01, 0.01),      (0.5, 0.5, 0.5),        (5., 5, 0),   (1., 0, 0, 0), 'A1')
-    A2 = PayloadInfo(   f"{wooden_dir}/WoodenCrate_A2.usd", (0.005, 0.005, 0.005),   (0.25, 0.25, 0.25),  (3., 5, 0),     (1., 0, 0, 0), 'A2')
-    B1 = PayloadInfo(   f"{wooden_dir}/WoodenCrate_B1.usd", (0.01, 0.01, 0.01),      (0.5, 1.0, 0.5),        (0., 5., 0),    (1., 0, 0, 0), 'B1')
-    B2 = PayloadInfo(   f"{wooden_dir}/WoodenCrate_B2.usd", (0.005, 0.005, 0.005),   (0.25, 0.5, 0.25),   (-3., 5, 0),    (1., 0, 0, 0), 'B2')
-    D1 = PayloadInfo(   f"{wooden_dir}/WoodenCrate_D1.usd", (0.006, 0.006, 0.006),      (0.6, 0.9, 0.3),        (-5., 5., 0),    (1., 0, 0, 0), 'D1')
-    D1_s = PayloadInfo( f"{wooden_dir}/WoodenCrate_D1.usd", (0.003, 0.003, 0.003),   (0.3, 0.45, 0.15),   (0., -5, 0),    (1., 0, 0, 0), 'D1_s')
+    A1 = PayloadInfo(   f"{wooden_dir}/WoodenCrate_A1.usd", (0.01, 0.01, 0.01),      (0.5, 0.5, 0.5),        (-18., 1, 0),   (1., 0, 0, 0), 'A1', 1.1)
+    B1 = PayloadInfo(   f"{wooden_dir}/WoodenCrate_B1.usd", (0.01, 0.01, 0.01),      (0.5, 1.0, 0.5),        (-8., 1., 0),    (1., 0, 0, 0), 'B1', 1)
+    B2 = PayloadInfo(   f"{wooden_dir}/WoodenCrate_B2.usd", (0.005, 0.005, 0.005),   (0.25, 0.5, 0.25),   (-3., 5, 0),    (1., 0, 0, 0), 'B2', 1)
+    D1 = PayloadInfo(   f"{wooden_dir}/WoodenCrate_D1.usd", (0.006, 0.006, 0.006),      (0.6, 0.9, 0.3),        (2., 1., 0),    (1., 0, 0, 0), 'D1', 0.815)
+    D1_s = PayloadInfo( f"{wooden_dir}/WoodenCrate_D1.usd", (0.003, 0.003, 0.003),   (0.3, 0.45, 0.15),   (0., -5, 0),    (1., 0, 0, 0), 'D1_s', 1)
     # CA1 = PayloadInfo(  f"{cardboard_dir}/Cardbox_A1.usd",      (0.015, 0.015, 0.015),      (0.4, 0.4, 0.4),        (-1., -2, 0),   (1., 0, 0, 0), 'CA1')
     # CA2 = PayloadInfo(  f"{cardboard_dir}/Cardbox_A2.usd",      (0.012, 0.012, 0.012),       (0.325, 0.325, 0.325),  (1., 2, 0),     (1., 0, 0, 0), 'CA2')
     # CB1 = PayloadInfo(  f"{cardboard_dir}/Cardbox_B1.usd",     (0.012, 0.03, 0.016),      (0.4, 0.8, 0.4),        (0., -2, 0),    (1., 0, 0, 0), 'CB1')
