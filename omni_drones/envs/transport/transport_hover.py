@@ -117,8 +117,8 @@ class TransportHover(IsaacEnv):
             torch.as_tensor(payload_mass_scale[1] * self.drone.MASS_0.sum(), device=self.device)
         )
         self.init_pos_dist = D.Uniform(
-            torch.tensor([-30, -30, 0.5], device=self.device),
-            torch.tensor([30., 30., 15.], device=self.device)
+            torch.tensor([-10, -10, 0.5], device=self.device),
+            torch.tensor([10., 10., 15.], device=self.device)
         )
         self.init_rpy_dist = D.Uniform(
             torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
@@ -126,7 +126,7 @@ class TransportHover(IsaacEnv):
         )
         self.height_dist = D.Uniform(
             torch.tensor([0., 0., 0.5], device=self.device),
-            torch.tensor([0., 0., 15], device=self.device)
+            torch.tensor([0., 0., 5], device=self.device)
         )
         # self.payload_target_pos = torch.zeros((self.num_envs, 3), device=self.device)
         self.payload_target_pos = torch.tensor([0., 0., 1], device=self.device)
@@ -216,6 +216,7 @@ class TransportHover(IsaacEnv):
 
         info_spec = CompositeSpec({
             "payload_mass": UnboundedContinuousTensorSpec(1),
+            "drone_state":UnboundedContinuousTensorSpec((self.drone.n, 13))
         }).expand(self.num_envs).to(self.device)
         stats_spec = CompositeSpec({
             "return": UnboundedContinuousTensorSpec(self.drone.n),
@@ -282,6 +283,7 @@ class TransportHover(IsaacEnv):
 
     def _compute_state_and_obs(self):
         self.drone_states = self.drone.get_state()
+        self.info["drone_state"][:] = self.drone_states[..., :13]
         self.group.get_state()
         payload_vels = self.payload.get_velocities()
         drone_pos = self.drone_states[..., :3]

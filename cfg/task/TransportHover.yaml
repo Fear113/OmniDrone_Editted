@@ -7,7 +7,7 @@ defaults:
   # - /base/randomization_base@_here_
 
 env:
-  num_envs: 200
+  num_envs: 1
   env_spacing: 50
   max_episode_length: 2000
 
@@ -28,4 +28,4 @@ safe_distance: 0.5
 ravel_obs: true
 flatten_state: true
 
-action_transform: null
+action_transform: rate

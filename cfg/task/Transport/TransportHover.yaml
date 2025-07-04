@@ -5,13 +5,13 @@ defaults:
   - /base/env_base@_here_
   - /base/sim_base@_here_
   # - /base/randomization_base@_here_
-
+# task.action_transform=rate
 env:
-  num_envs: 150
-  env_spacing: 50
-  max_episode_length: 1500
+  num_envs: 100
+  env_spacing: 10
+  max_episode_length: 600
 
-drone_model: Hummingbird
+drone_model: Crazyflie
 num_drones: 4
 force_sensor: false
 time_encoding: true
@@ -28,4 +28,4 @@ safe_distance: 0.5
 ravel_obs: true
 flatten_state: true
 
-action_transform: null
+action_transform: attitude # velocity, attitude, rate
