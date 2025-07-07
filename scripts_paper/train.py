@@ -159,7 +159,7 @@ def main(cfg):
     agent_spec: AgentSpec = env.agent_spec["drone"]
     policy = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=agent_spec, device="cuda")
 
-    # policy.load_state_dict(torch.load("./1126_checkpoint_26000.pt"))
+    # policy.load_state_dict(torch.load("/home/mlic/Repo/OmniDrone/wandb/run-20250705_071839-86xt84op/files/checkpoint_final.pt"))
 
     frames_per_batch = env.num_envs * int(cfg.algo.train_every)
     total_frames = cfg.get("total_frames", -1) // frames_per_batch * frames_per_batch
