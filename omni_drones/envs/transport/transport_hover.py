@@ -39,6 +39,7 @@ from omni_drones.robots.drone import MultirotorBase
 from omni_drones.utils.payload import Payload
 from .utils import TransportationGroup, TransportationCfg
 
+import pdb
 
 class TransportHover(IsaacEnv):
     r"""

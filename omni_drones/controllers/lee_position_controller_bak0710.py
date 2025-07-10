@@ -316,22 +316,9 @@ class RateController(nn.Module):
         )
 
         self.mixer = nn.Parameter(compute_parameters(rotor_config, I))
-
-        # control gain
-        if "gain_angular_rate" in uav_params.keys():
-            self.gain_angular_rate = nn.Parameter(
-                torch.as_tensor(uav_params["gain_angular_rate"], dtype=torch.float) @ I[:3, :3].inverse()
-            )
-        else:
-            self.gain_angular_rate = nn.Parameter(
-                torch.tensor([0.52, 0.52, 0.025]) @ I[:3, :3].inverse()
-            )
-
-        # rate command range
-        if "angular_rate_max" in uav_params.keys():
-            self.angular_rate_max = torch.as_tensor(uav_params["angular_rate_max"], dtype=torch.float)
-        else:
-            self.angular_rate_max = torch.ones(3)
+        self.gain_angular_rate = nn.Parameter(
+            torch.tensor([0.52, 0.52, 0.025]) @ I[:3, :3].inverse()
+        )
 
     
     def forward(
@@ -341,10 +328,6 @@ class RateController(nn.Module):
         target_thrust: torch.Tensor,
     ):
         assert root_state.shape[:-1] == target_rate.shape[:-1]
-
-        # rate command range remapping
-        device = root_state.device
-        target_rate *= self.angular_rate_max.to(device)
 
         batch_shape = root_state.shape[:-1]
         root_state = root_state.reshape(-1, 13)

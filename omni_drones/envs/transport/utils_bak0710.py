@@ -112,7 +112,7 @@ class TransportationGroup(RobotBase):
 
             script_utils.setRigidBody(payload, "convexHull", False)
             UsdPhysics.MassAPI.Apply(payload)
-            payload.GetAttribute("physics:mass").Set(2)
+            payload.GetAttribute("physics:mass").Set(0.00000002)
             payload.GetAttribute("physics:rigidBodyEnabled").Set(True)
 
             kit_utils.set_rigid_body_properties(
@@ -205,7 +205,7 @@ class TransportationGroup(RobotBase):
                     translation=(0, 0, -0.5),
                     from_prim=payload,
                     to_prim=f"{prim_path}/{self.drone.name.lower()}_{i}/base_link",
-                    mass=0.001,
+                    mass=0.00000003,
                     enable_collision=enable_collision
                 )
 

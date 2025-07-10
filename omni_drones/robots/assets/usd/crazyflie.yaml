@@ -1,43 +1,50 @@
 name: crazyflie
 inertia:
-  xx: 1.4e-5
+  xx: 2.14984e-5
   xy: 0.0
   xz: 0.0
-  yy: 1.4e-5
+  yy: 5.78824e-5
   yz: 0.0
-  zz: 2.17e-5
-mass: 0.028
-l: 0.096
-drag_coef: 0.2
+  zz: 7.23724e-5
+mass: 0.035
+drag_coef: 0.002
 rotor_configuration:
   arm_lengths:
-  - 0.043
-  - 0.043
-  - 0.043
-  - 0.043
+  - 0.043840620433565944
+  - 0.043840620433565944
+  - 0.043840620433565944
+  - 0.043840620433565944
   directions:
   - -1.0
   - 1.0
   - -1.0
   - 1.0
-  force_constants:
-  - 2.88e-8
-  - 2.88e-8
-  - 2.88e-8
-  - 2.88e-8
-  max_rotation_velocities:
-  - 2315
-  - 2315
-  - 2315
-  - 2315
-  moment_constants:
-  - 7.24e-10
-  - 7.24e-10
-  - 7.24e-10
-  - 7.24e-10
+  force_constants: # motor_vel -> thrust (2nd polynomial)
+  - 1.7965e-08
+  - 1.7965e-08
+  - 1.7965e-08
+  - 1.7965e-08
+  max_rotation_velocities: # [rad/s]
+  - 2600 # 2600
+  - 2600
+  - 2600
+  - 2600
+  moment_constants: # motor_vel -> torque (2nd polynomial)
+  - 1.0715e-10
+  - 1.0715e-10
+  - 1.0715e-10
+  - 1.0715e-10
   num_rotors: 4
   rotor_angles:
   - 0.78539816
   - 2.35619449
   - 3.92699082
   - 5.49778714
+gain_angular_rate:
+  - 20
+  - 20
+  - 40
+angular_rate_max: # [rad/s]
+  - 2
+  - 2
+  - 1
