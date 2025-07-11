@@ -123,6 +123,7 @@ def main(cfg):
     
     # optionally discretize the action space or use a controller
     action_transform: str = cfg.task.get("action_transform", None)
+    max_thrust = None
     if action_transform is not None:
         if action_transform.startswith("multidiscrete"):
             nbins = int(action_transform.split(":")[1])
@@ -148,6 +149,7 @@ def main(cfg):
             from omni_drones.controllers import RateController as _RateController
             from omni_drones.utils.torchrl.transforms import RateController
             controller = _RateController(9.81, base_env.drone.params).to(base_env.device)
+            max_thrust = controller.max_thrust()
             transform = RateController(controller)
             transforms.append(transform)
         elif not action_transform.lower() == "none":
@@ -157,7 +159,7 @@ def main(cfg):
     env.set_seed(cfg.seed)
 
     agent_spec: AgentSpec = env.agent_spec["drone"]
-    policy = algos[cfg.algo.name.lower()](cfg.algo, agent_spec=agent_spec, device="cuda")
+    policy = algos[cfg.algo.name.lower()](cfg.algo, max_thrust, agent_spec=agent_spec, device="cuda")
 
     # policy.load_state_dict(torch.load("/home/mlic/Repo/OmniDrone/wandb/run-20250705_071839-86xt84op/files/checkpoint_final.pt"))
 

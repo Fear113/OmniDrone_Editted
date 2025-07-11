@@ -19,8 +19,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
-
+import math
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -51,7 +50,7 @@ LR_SCHEDULER = lr_scheduler._LRScheduler
 
 class MAPPOPolicy(object):
     def __init__(
-        self, cfg, agent_spec: AgentSpec, device="cuda"
+        self, cfg, max_thrust, agent_spec: AgentSpec, device="cuda"
     ) -> None:
         super().__init__()
 
@@ -62,6 +61,7 @@ class MAPPOPolicy(object):
         print(self.agent_spec.observation_spec)
         print(self.agent_spec.action_spec)
 
+        self.max_thrust = max_thrust
         self.clip_param = cfg.clip_param
         self.ppo_epoch = int(cfg.ppo_epochs)
         self.num_minibatches = int(cfg.num_minibatches)
@@ -111,6 +111,7 @@ class MAPPOPolicy(object):
 
     def make_actor(self):
         cfg = self.cfg.actor
+        cfg['max_thrust'] = self.max_thrust
 
         self.actor_in_keys = [self.obs_name, self.act_name]
         self.actor_out_keys = [
@@ -421,7 +422,7 @@ def make_ppo_actor(cfg, observation_spec: TensorSpec, action_spec: TensorSpec):
     else:
         raise NotImplementedError(action_spec)
 
-    return Actor(encoder, act_dist)
+    return Actor(cfg, encoder, act_dist)
 
 
 def make_critic(cfg, state_spec: TensorSpec, reward_spec: TensorSpec, centralized=False):
@@ -441,12 +442,22 @@ def make_critic(cfg, state_spec: TensorSpec, reward_spec: TensorSpec, centralize
 class Actor(nn.Module):
     def __init__(
         self,
+        cfg,
         encoder: nn.Module,
         act_dist: nn.Module,
     ) -> None:
         super().__init__()
+        self.cfg = cfg
         self.encoder = encoder
         self.act_dist = act_dist
+
+    def _squash_correction(self, raw_action):
+        """
+        log |det J_tanh|  for tanh squash (applied per dimension).
+        Ref: Appendix C of SAC paper.
+        """
+        # 2·(log(2) − x − softplus(−2x))
+        return 2. * (math.log(2.) - raw_action - F.softplus(-2. * raw_action))
 
     def forward(
         self,
@@ -464,7 +475,12 @@ class Actor(nn.Module):
             return action, action_log_probs, dist_entropy
         else:
             action = action_dist.mode if deterministic else action_dist.sample()
+            rate, thrust = torch.tanh(action).split([3,1], -1)  # ∈ (-1,1)
+            thrust = 0.5 * (thrust + 1.0) * (self.cfg['max_thrust'])
+            action[:, :3] = rate
+            action[:, 3:] = thrust
             action_log_probs = action_dist.log_prob(action).unsqueeze(-1)
+            action_log_probs -= self._squash_correction(action).sum(-1, keepdim=True)
             dist_entropy = action_dist.entropy().unsqueeze(-1)
             return action, action_log_probs, dist_entropy
 

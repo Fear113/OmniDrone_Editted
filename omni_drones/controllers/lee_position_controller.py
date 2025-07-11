@@ -346,6 +346,9 @@ class RateController(nn.Module):
         else:
             self.angular_rate_max = torch.ones(3) * torch.pi  # [3.14, 3.14, 3.14]
 
+    def max_thrust(self):
+        return self.max_thrusts.sum(-1).item()
+
     def forward(
         self,
         root_state: torch.Tensor,
