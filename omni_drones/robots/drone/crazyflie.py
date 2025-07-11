@@ -43,14 +43,77 @@ class Crazyflie(MultirotorBase):
     # usd_path: str = ASSET_PATH + "/usd/cf2x_isaac.usd"
     param_path: str = ASSET_PATH + "/usd/crazyflie.yaml"
 
+    def initialize(
+        self, prim_paths_expr: str = None, track_contact_forces: bool = False
+    ):
+        super().initialize(
+            prim_paths_expr=prim_paths_expr, track_contact_forces=track_contact_forces
+        )
+        # rotor update
+        rotor_config = self.params["rotor_configuration"]
+        self.rotors = CFRotor(rotor_config, dt=self.dt).to(self.device)
+
+        rotor_params = make_functional(self.rotors)
+        self.KF_0 = rotor_params["KF"].clone()
+        self.KM_0 = rotor_params["KM"].clone()
+        self.MAX_ROT_VEL = (
+            torch.as_tensor(rotor_config["max_rotation_velocities"])
+            .float()
+            .to(self.device)
+        )
+        self.rotor_params = rotor_params.expand(self.shape).clone()
+
+        self.tau_up = self.rotor_params["tau_up"]
+        self.tau_down = self.rotor_params["tau_down"]
+        self.KF = self.rotor_params["KF"]
+        self.KM = self.rotor_params["KM"]
+        self.throttle = self.rotor_params["throttle"]
+        self.directions = self.rotor_params["directions"]
+        self.throttle_difference = torch.zeros(
+            self.throttle.shape[:-1], device=self.device
+        )
+        logging.info("Use crazyflie rotor")
+
+        # mass & inertia load
+        mass = torch.tensor(self.params["mass"])
+        inertia = self.params["inertia"]
+        inertia = torch.tensor([inertia["xx"], inertia["yy"], inertia["zz"]])
+
+        # mass & inertia update
+        self.base_link.set_masses(mass)
+        self.base_link.set_inertias(torch.diag_embed(inertia))
+
+        # update parameters
+        self.masses = self.base_link.get_masses().clone()
+        self.gravity = self.masses * 9.81
+        self.inertias = (
+            self.base_link.get_inertias().reshape(*self.shape, 3, 3).diagonal(0, -2, -1)
+        )
+        # default/initial parameters
+        self.MASS_0 = self.masses[0].clone()
+        self.INERTIA_0 = (
+            self.base_link.get_inertias()
+            .reshape(*self.shape, 3, 3)[0]
+            .diagonal(0, -2, -1)
+            .clone()
+        )
+        self.THRUST2WEIGHT_0 = self.KF_0 / (self.MASS_0 * 9.81)  # TODO: get the real g
+        self.FORCE2MOMENT_0 = torch.broadcast_to(
+            self.KF_0 / self.KM_0, self.THRUST2WEIGHT_0.shape
+        )
+
+        logging.info("mass & inertia updated from yaml")
+        logging.info(str(self))
+
+
 class CFRotor(nn.Module):
     def __init__(self, rotor_config, dt: float):
         super().__init__()
         force_constants = torch.as_tensor(rotor_config["force_constants"])
         moment_constants = torch.as_tensor(rotor_config["moment_constants"])
         max_rot_vels = torch.as_tensor(rotor_config["max_rotation_velocities"]).float()
-        tau_up = 0.0125
-        tau_down = 0.025
+        tau_up = 0.0125  # crazyflie
+        tau_down = 0.025  # crazyflie
         self.num_rotors = len(force_constants)
 
         self.dt = dt
@@ -64,7 +127,9 @@ class CFRotor(nn.Module):
         self.KM = nn.Parameter(
             max_rot_vels.square() * moment_constants
         )  # max torque per rotor
-        self.throttle = nn.Parameter(torch.zeros(self.num_rotors))
+        self.throttle = nn.Parameter(
+            torch.zeros(self.num_rotors)
+        )  # normalized rotor vel [0 ,1]
         self.directions = nn.Parameter(
             torch.as_tensor(rotor_config["directions"]).float()
         )
@@ -83,9 +148,11 @@ class CFRotor(nn.Module):
         """
         target_throttle = self.f_inv(torch.clamp((cmds + 1) / 2, 0, 1))
 
+        # update
         tau = torch.where(target_throttle > self.throttle, self.tau_up, self.tau_down)
         tau = torch.clamp(tau, 0, 1)
-        self.throttle.add_(tau * (target_throttle - self.throttle))
+        decay = torch.exp(-self.dt / tau)
+        self.throttle.mul_(decay).add_((1 - decay) * target_throttle)
 
         noise = torch.randn_like(self.throttle) * self.noise_scale * 0.0
         t = torch.clamp(self.f(self.throttle) + noise, 0.0, 1.0)

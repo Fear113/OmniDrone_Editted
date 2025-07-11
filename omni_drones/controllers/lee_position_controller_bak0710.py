@@ -328,7 +328,8 @@ class RateController(nn.Module):
         target_thrust: torch.Tensor,
     ):
         assert root_state.shape[:-1] == target_rate.shape[:-1]
-
+        import pdb
+        pdb.set_trace()
         batch_shape = root_state.shape[:-1]
         root_state = root_state.reshape(-1, 13)
         target_rate = target_rate.reshape(-1, 3)

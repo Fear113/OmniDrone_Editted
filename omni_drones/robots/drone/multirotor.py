@@ -252,7 +252,6 @@ class MultirotorBase(RobotBase):
         actions : (f, r, p, y)
         rotors = Ratecontroller.forward(state, actions[1:], actions[0])
         '''
-
         rotor_cmds = actions.expand(*self.shape, self.num_rotors)
         last_throttle = self.throttle.clone()
         thrusts, moments = vmap(vmap(self.rotors, randomness="different"), randomness="same")(

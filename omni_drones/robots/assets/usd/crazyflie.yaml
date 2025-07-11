@@ -9,6 +9,8 @@ inertia:
 mass: 0.035
 drag_coef: 0.002
 rotor_configuration:
+  tau_up : 0.0125
+  tau_down : 0.025
   arm_lengths:
   - 0.043840620433565944
   - 0.043840620433565944
@@ -25,7 +27,7 @@ rotor_configuration:
   - 1.7965e-08
   - 1.7965e-08
   max_rotation_velocities: # [rad/s]
-  - 2600 # 2600
+  - 2600
   - 2600
   - 2600
   - 2600
@@ -40,10 +42,6 @@ rotor_configuration:
   - 2.35619449
   - 3.92699082
   - 5.49778714
-gain_angular_rate:
-  - 20
-  - 20
-  - 40
 angular_rate_max: # [rad/s]
   - 2
   - 2
