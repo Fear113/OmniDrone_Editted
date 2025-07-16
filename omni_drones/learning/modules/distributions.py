@@ -78,7 +78,7 @@ class DiagGaussian(nn.Module):
     def forward(self, x):
         action_mean = self.fc_mean(x)
         action_std = torch.broadcast_to(torch.exp(self.log_std), action_mean.shape)
-        dist = D.Independent(D.Normal(action_mean, action_std), 1)
+        dist = D.Independent(D.Normal(action_mean, torch.clamp(action_std, min=0)), 1)
         return dist
 
 

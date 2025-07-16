@@ -474,13 +474,12 @@ class Actor(nn.Module):
             dist_entropy = action_dist.entropy().unsqueeze(-1)
             return action, action_log_probs, dist_entropy
         else:
-            action = action_dist.mode if deterministic else action_dist.sample()
-            rate, thrust = torch.tanh(action).split([3,1], -1)  # ∈ (-1,1)
+            raw_action = action_dist.mode if deterministic else action_dist.sample()
+            rate, thrust = torch.tanh(raw_action).split([3,1], -1)  # ∈ (-1,1)
             thrust = 0.5 * (thrust + 1.0) * (self.cfg['max_thrust'])
-            action[:, :3] = rate
-            action[:, 3:] = thrust
-            action_log_probs = action_dist.log_prob(action).unsqueeze(-1)
-            action_log_probs -= self._squash_correction(action).sum(-1, keepdim=True)
+            action = torch.cat([rate, thrust], dim=-1)
+            action_log_probs = action_dist.log_prob(raw_action).unsqueeze(-1)
+            action_log_probs -= self._squash_correction(raw_action).sum(-1, keepdim=True)
             dist_entropy = action_dist.entropy().unsqueeze(-1)
             return action, action_log_probs, dist_entropy
 
