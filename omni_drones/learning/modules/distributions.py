@@ -77,9 +77,9 @@ class DiagGaussian(nn.Module):
 
     def forward(self, x):
         action_mean = self.fc_mean(x)
-        # #아래는 sqush 방법
+        # #아래는 squash 방법
         # log_std = torch.tanh(self.log_std) # output in (-1, 1)
-        # # log_std = -2.0 + 2.0 * (log_std + 1) / 2 # scale to (-2, 0) #해당 범위가 옳바른지 모름 
+        # # log_std = -2.0 + 2.0 * (log_std + 1) / 2 # scale to (-2, 0) #해당 범위가 올바른지 모름 
 
         # 아래는 clamp방법
         log_std = torch.clamp(self.log_std, min=-20, max=2) ##해당 clamp 범위가 올바른지 모름 
