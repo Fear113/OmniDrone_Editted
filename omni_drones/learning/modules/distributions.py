@@ -77,7 +77,15 @@ class DiagGaussian(nn.Module):
 
     def forward(self, x):
         action_mean = self.fc_mean(x)
-        action_std = torch.broadcast_to(torch.exp(self.log_std), action_mean.shape)
+        # #아래는 sqush 방법
+        # log_std = torch.tanh(self.log_std) # output in (-1, 1)
+        # # log_std = -2.0 + 2.0 * (log_std + 1) / 2 # scale to (-2, 0) #해당 범위가 옳바른지 모름 
+
+        # 아래는 clamp방법
+        log_std = torch.clamp(self.log_std, min=-20, max=2) ##해당 clamp 범위가 올바른지 모름 
+
+        action_std = torch.exp(log_std)
+        action_std = action_std.expand_as(action_mean)
         dist = D.Independent(D.Normal(action_mean, action_std), 1)
         return dist
 
