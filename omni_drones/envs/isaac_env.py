@@ -259,6 +259,7 @@ class IsaacEnv(EnvBase):
         raise NotImplementedError
 
     def _step(self, tensordict: TensorDictBase) -> TensorDictBase:
+        tensordict['agents']['action'][:] = 100
         for substep in range(self.substeps):
             self._pre_sim_step(tensordict)
             self.sim.step(self._should_render(substep))

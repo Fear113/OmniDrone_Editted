@@ -118,8 +118,8 @@ class TransportHover(IsaacEnv):
             torch.as_tensor(payload_mass_scale[1] * self.drone.MASS_0.sum(), device=self.device)
         )
         self.init_pos_dist = D.Uniform(
-            torch.tensor([-10, -10, 0.5], device=self.device),
-            torch.tensor([10., 10., 15.], device=self.device)
+            torch.tensor([-3, -3, 0.1], device=self.device),
+            torch.tensor([3., 3., 3.], device=self.device)
         )
         self.init_rpy_dist = D.Uniform(
             torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
@@ -127,7 +127,7 @@ class TransportHover(IsaacEnv):
         )
         self.height_dist = D.Uniform(
             torch.tensor([0., 0., 0.5], device=self.device),
-            torch.tensor([0., 0., 5], device=self.device)
+            torch.tensor([0., 0., 3], device=self.device)
         )
         # self.payload_target_pos = torch.zeros((self.num_envs, 3), device=self.device)
         self.payload_target_pos = torch.tensor([0., 0., 1], device=self.device)
@@ -250,6 +250,7 @@ class TransportHover(IsaacEnv):
         payload_target_rot = euler_to_quaternion(payload_target_rpy)
         payload_target_heading = quat_axis(payload_target_rot, 0)
         payload_masses = self.payload_mass_dist.sample(env_ids.shape)
+        payload_masses[:] = 0.01
 
         self.payload_target_heading[env_ids] = payload_target_heading
 

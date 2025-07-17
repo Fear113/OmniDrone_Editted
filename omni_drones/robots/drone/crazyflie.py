@@ -159,4 +159,6 @@ class CFRotor(nn.Module):
         thrusts = t * self.KF
         moments = (t * self.KM) * -self.directions
 
+        # thrusts[:] = 0.5
+
         return thrusts, moments

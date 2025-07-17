@@ -16,7 +16,7 @@ num_drones: 4
 force_sensor: false
 time_encoding: true
 
-payload_mass_scale: [0.10, 0.15] # [0.15, 0.25] true mass = scale * (cf_mass * 4 - 0.001 * 4), max payload : 70% 37.851[g] (bar contain)
+payload_mass_scale: [1, 1] # [0.15, 0.25] true mass = scale * (cf_mass * 4 - 0.001 * 4), max payload : 70% 37.851[g] (bar contain)
 
 reward_effort_weight: 0.0
 reward_spin_weight: 0.8
@@ -28,4 +28,4 @@ safe_distance: 0.5
 ravel_obs: true
 flatten_state: true
 
-action_transform: rate # velocity, attitude, rate
+#action_transform: rate # velocity, attitude, rate
