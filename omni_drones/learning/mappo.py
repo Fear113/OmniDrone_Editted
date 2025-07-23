@@ -476,6 +476,7 @@ class Actor(nn.Module):
         else:
             raw_action = action_dist.mode if deterministic else action_dist.sample()
             rate, thrust = torch.tanh(raw_action).split([3,1], -1)  # ∈ (-1,1)
+            rate = rate * math.pi
             thrust = 0.5 * (thrust + 1.0) * (self.cfg['max_thrust'])
             action = torch.cat([rate, thrust], dim=-1)
             action_log_probs = action_dist.log_prob(raw_action).unsqueeze(-1)
