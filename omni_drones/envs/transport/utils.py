@@ -75,9 +75,6 @@ class TransportationGroup(RobotBase):
         enable_collision: bool = False,
         drone_translations_origin = None,
         orientations = None,
-        payload_usd = Payload.A1.value.usd_path,
-        payload_scale = Payload.A1.value.scale,
-        name = None
     ):
 
         translations = torch.atleast_2d(
@@ -99,15 +96,15 @@ class TransportationGroup(RobotBase):
             )
 
             if self.num_drones == 4:
-                self.payload_scale = (0.75, 0.5, 0.2)
+                self.payload_scale = (0.5, 0.25, 0.2)
             elif self.num_drones == 6:
                 self.payload_scale = (1.0, 0.5, 0.2)
 
             payload = prim_utils.create_prim(
                 prim_path=f"{prim_path}/payload",
-                usd_path=payload_usd,
+                prim_type="Cube",
                 translation=(0.0, 0.0, -1.1),
-                scale=payload_scale,
+                scale=self.payload_scale,
             )
 
             script_utils.setRigidBody(payload, "convexHull", False)
@@ -123,49 +120,14 @@ class TransportationGroup(RobotBase):
             if drone_translations_origin is not None:
                 drone_translations = drone_translations_origin
             else:
+
                 if self.num_drones == 4:
-                    if name=="D1" or name=="CC1":   # did
-                        drone_translations = torch.tensor([
-                            [0.6, 0.9, 0.45],
-                            [0.6, -0.9, 0.45],
-                            [-0.6, -0.9, 0.45],
-                            [-0.6, 0.9, 0.45],
-                        ])
-                    elif name=="D1_s" or name=="CC2":   # did
-                        drone_translations = torch.tensor([
-                            [0.3, 0.45, 0.175],
-                            [0.3, -0.45, 0.175],
-                            [-0.3, -0.45, 0.175],
-                            [-0.3, 0.45, 0.175],
-                        ])
-                    elif name=="A1" or name=="CA1"or name is None: # did
-                        drone_translations = torch.tensor([
-                            [0.5, 0.5, 0.9],
-                            [0.5, -0.5, 0.9],
-                            [-0.5, -0.5, 0.9],
-                            [-0.5, 0.5, 0.9],
-                        ])
-                    elif name=="A2" or name=="CA2": # did
-                        drone_translations = torch.tensor([
-                            [0.25, 0.25, 0.4],
-                            [0.25, -0.25, 0.4],
-                            [-0.25, -0.25, 0.4],
-                            [-0.25, 0.25, 0.4],
-                        ])
-                    elif name=="B1" or name=="CB1": # did
-                        drone_translations = torch.tensor([
-                            [0.5, 1.0, 0.88],
-                            [0.5, -1.0, 0.88],
-                            [-0.5, -1.0, 0.88],
-                            [-0.5, 1.0, 0.88],
-                        ])
-                    elif name=="B2" or name=="CB2": #did
-                        drone_translations = torch.tensor([
-                            [0.25, 0.5, 0.4],
-                            [0.25, -0.5, 0.4],
-                            [-0.25, -0.5, 0.4],
-                            [-0.25, 0.5, 0.4],
-                        ])
+                    drone_translations = torch.tensor([
+                        [0.5, 0.25, 0],
+                        [0.5, -0.25, 0],
+                        [-0.5, -0.25, 0],
+                        [-0.5, 0.25, 0],
+                    ])
                 elif self.num_drones == 6:
                     drone_translations = torch.tensor([
                         [1.0, 0.5, 0],

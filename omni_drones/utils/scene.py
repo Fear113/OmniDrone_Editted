@@ -193,7 +193,7 @@ def create_bar(
 
     capsuleGeom = UsdGeom.Capsule.Define(stage, f"{prim_path}/Capsule")
     capsuleGeom.CreateHeightAttr(length)
-    capsuleGeom.CreateRadiusAttr(0.012)
+    capsuleGeom.CreateRadiusAttr(0.005)
     capsuleGeom.CreateAxisAttr("Z")
     capsuleGeom.AddTranslateOp().Set(Gf.Vec3f(*translation))
     capsuleGeom.AddOrientOp().Set(Gf.Quatf(1.0))

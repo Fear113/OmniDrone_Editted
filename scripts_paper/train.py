@@ -152,6 +152,7 @@ def main(cfg):
             max_thrust = controller.max_thrust()
             transform = RateController(controller)
             transforms.append(transform)
+            cfg.algo.actor['bounded_action'] = True
         elif not action_transform.lower() == "none":
             raise NotImplementedError(f"Unknown action transform: {action_transform}")
     

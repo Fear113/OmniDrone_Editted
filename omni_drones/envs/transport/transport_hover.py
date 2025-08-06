@@ -118,16 +118,16 @@ class TransportHover(IsaacEnv):
             torch.as_tensor(payload_mass_scale[1] * self.drone.MASS_0.sum(), device=self.device)
         )
         self.init_pos_dist = D.Uniform(
-            torch.tensor([-10, -10, 0.5], device=self.device),
-            torch.tensor([10., 10., 15.], device=self.device)
+            torch.tensor([-5, -5, 1.], device=self.device),
+            torch.tensor([5., 5., 2.5], device=self.device)
         )
         self.init_rpy_dist = D.Uniform(
             torch.tensor([0., 0., 0.], device=self.device) * torch.pi,
             torch.tensor([0., 0., 2.], device=self.device) * torch.pi
         )
         self.height_dist = D.Uniform(
-            torch.tensor([0., 0., 0.5], device=self.device),
-            torch.tensor([0., 0., 5], device=self.device)
+            torch.tensor([0., 0., 1.], device=self.device),
+            torch.tensor([0., 0., 2.5], device=self.device)
         )
         # self.payload_target_pos = torch.zeros((self.num_envs, 3), device=self.device)
         self.payload_target_pos = torch.tensor([0., 0., 1], device=self.device)
@@ -154,8 +154,9 @@ class TransportHover(IsaacEnv):
             "/World/envs/env_0/payloadTargetVis",
             translation=torch.tensor([0., 0., 1.]),
             # scale=torch.tensor([0.75, 0.5, 0.2]),
-            scale=torch.tensor([0.6, 0.9, 0.3]),  # D1
+            # scale=torch.tensor([0.6, 0.9, 0.3]),  # D1
             # scale=torch.tensor([0.4, 0.4, 0.3]),  # A1
+            scale=torch.tensor([0.5, 0.25, 0.2]),
             color=torch.tensor([0.8, 0.1, 0.1]),
             size=2.01,
         )
@@ -168,7 +169,7 @@ class TransportHover(IsaacEnv):
             disable_gravity=True
         )
 
-        self.group.spawn(translations=[(0, 0, 1.)], enable_collision=False, name='D1', payload_usd=Payload.D1.value.usd_path, payload_scale = Payload.D1.value.scale)
+        self.group.spawn(translations=[(0, 0, 1.)], enable_collision=False)
         return ["/World/defaultGroundPlane"]
 
     def _set_specs(self):
