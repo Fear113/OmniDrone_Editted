@@ -38,26 +38,6 @@ import yaml
 import os.path as osp
 
 
-def compute_B_allocation_parameters(
-    rotor_config,
-):
-    rotor_angles = torch.as_tensor(rotor_config["rotor_angles"])
-    arm_lengths = torch.as_tensor(rotor_config["arm_lengths"])
-    force_constants = torch.as_tensor(rotor_config["force_constants"])
-    moment_constants = torch.as_tensor(rotor_config["moment_constants"])
-    directions = torch.as_tensor(rotor_config["directions"])
-    A = torch.stack(
-        [
-            torch.sin(rotor_angles) * arm_lengths,
-            -torch.cos(rotor_angles) * arm_lengths,
-            -directions * moment_constants / force_constants,
-            torch.ones_like(rotor_angles),
-        ]
-    )
-
-    return A
-
-
 def compute_parameters(
     rotor_config,
     inertia_matrix,
@@ -347,24 +327,24 @@ class RateController(nn.Module):
 
         self.g = nn.Parameter(torch.tensor(g))
         self.max_thrusts = nn.Parameter(max_rot_vel.square() * force_constants)
-        I_diag = torch.tensor(
-            [inertia["xx"], inertia["yy"], inertia["zz"]], dtype=torch.float32
+        I = torch.diag_embed(
+            torch.tensor([inertia["xx"], inertia["yy"], inertia["zz"], 1])
         )
-        self.register_buffer("I", torch.diag(I_diag))
-        B_alloc = compute_B_allocation_parameters(rotor_config).to(torch.float32)
-        self.register_buffer("B_allocation_inv", B_alloc.inverse())
+
+        self.mixer = nn.Parameter(compute_parameters(rotor_config, I))
 
         # control gain
-        self.gain_angular_rate = nn.Parameter(torch.tensor([20.0, 20.0, 40.0]))
+        self.gain_angular_rate = nn.Parameter(
+            torch.tensor([0.52, 0.52, 0.025]) @ I[:3, :3].inverse()
+        )
 
         # rate command range
         if "angular_rate_max" in uav_params.keys():
-            angular_rate_max = torch.as_tensor(
+            self.angular_rate_max = torch.as_tensor(
                 uav_params["angular_rate_max"], dtype=torch.float
             )
         else:
-            angular_rate_max = torch.ones(3) * torch.pi  # [3.14, 3.14, 3.14]
-        self.register_buffer("angular_rate_max", angular_rate_max)
+            self.angular_rate_max = torch.ones(3) * torch.pi  # [3.14, 3.14, 3.14]
 
     def max_thrust(self):
         return self.max_thrusts.sum(-1).item()
@@ -382,9 +362,10 @@ class RateController(nn.Module):
         assert root_state.shape[:-1] == target_rate.shape[:-1]
 
         # command range remapping
-        target_rate = target_rate / torch.pi  # [-pi, pi] -> [-1, 1]
+        device = root_state.device
+        target_rate /= torch.pi  # [-pi, pi] -> [-1, 1]
         target_rate = torch.clamp(target_rate, -1, 1)
-        target_rate = target_rate * self.angular_rate_max  # [-1, 1] -> [-max, max]
+        target_rate *= self.angular_rate_max.to(device)  # [-1, 1] -> [-max, max]
         target_thrust = torch.clamp(
             target_thrust, 0, self.max_thrusts.sum(-1)
         )  # [0, inf] -> [0, f_max]
@@ -393,23 +374,14 @@ class RateController(nn.Module):
         root_state = root_state.reshape(-1, 13)
         target_rate = target_rate.reshape(-1, 3)
         target_thrust = target_thrust.reshape(-1, 1)
-        num_drones = target_thrust.shape[0]
 
         pos, rot, linvel, angvel = root_state.split([3, 4, 3, 3], dim=1)
         body_rate = quat_rotate_inverse(rot, angvel)
 
-        rate_error = target_rate - body_rate
-        rate_error *= self.gain_angular_rate
-        target_torques = torch.matmul(rate_error, self.I.T) + torch.cross(
-            body_rate, torch.matmul(body_rate, self.I.T), dim=1
-        )
-
-        target_torques_thrust = torch.cat(
-            [target_torques, target_thrust], dim=1
-        ).unsqueeze(-1)
-        B_inv_batch = self.B_allocation_inv.unsqueeze(0).expand(num_drones, -1, -1)
-        cmd = torch.bmm(B_inv_batch, target_torques_thrust)
-        cmd = cmd.squeeze(-1)
+        rate_error = body_rate - target_rate
+        acc_des = -rate_error * self.gain_angular_rate + angvel.cross(angvel)
+        angacc_thrust = torch.cat([acc_des, target_thrust], dim=1)
+        cmd = (self.mixer @ angacc_thrust.T).T
 
         # clamping
         cmd = torch.where(
