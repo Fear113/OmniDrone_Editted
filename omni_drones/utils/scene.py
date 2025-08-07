@@ -219,6 +219,9 @@ def create_bar(
         UsdPhysics.CollisionAPI.Apply(sphere)
         sphere.GetAttribute("physics:collisionEnabled").Set(False)
 
+        massAPIsphere = UsdPhysics.MassAPI.Apply(sphere.GetPrim())
+        massAPIsphere.CreateMassAttr().Set(0.0001)
+
         script_utils.createJoint(stage, "Fixed", from_prim, sphere)
         joint: Usd.Prim = script_utils.createJoint(stage, "D6", prim, sphere)
         joint.GetAttribute("limit:rotX:physics:low").Set(-120)
